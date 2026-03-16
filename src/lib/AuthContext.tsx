@@ -37,7 +37,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           if (!querySnapshot.empty) {
             // Authorized Student/Parent
-            setStudentData(querySnapshot.docs[0].data());
+            const doc = querySnapshot.docs[0];
+            setStudentData({ id: doc.id, ...doc.data() });
             setUser(currentUser);
             setError(null);
           } else {
