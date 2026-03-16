@@ -1,8 +1,10 @@
 import { Mail, CheckSquare, FileText, Star, CalendarCheck } from "lucide-react";
 import { useAuth } from "../lib/AuthContext";
+import { useNavigate } from "react-router-dom";
 
 const MyChildPage = () => {
   const { studentData, user } = useAuth();
+  const navigate = useNavigate();
   
   const teachers = [
     { initials: "PP", name: "Mrs. Priya Patel", subject: "Class Teacher • Mathematics", color: "bg-primary" },
@@ -21,7 +23,10 @@ const MyChildPage = () => {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div />
-          <button className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium flex items-center gap-2">
+          <button 
+            onClick={() => navigate('/settings')}
+            className="px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium flex items-center gap-2 hover:opacity-90 transition-opacity"
+          >
             ✏️ Edit Profile
           </button>
         </div>
