@@ -1,62 +1,92 @@
 import { useState, useEffect } from "react";
-import { Mail, CheckSquare, FileText, Star, CalendarCheck, Loader2, User, Phone, MapPin, Award, ShieldCheck, HeartPulse, GraduationCap, ArrowRight } from "lucide-react";
+import { Mail, CheckSquare, FileText, Star, CalendarCheck, Loader2, User, Phone, MapPin, Award, ShieldCheck, HeartPulse, GraduationCap, ArrowRight, BookOpen } from "lucide-react";
 import { useAuth } from "../lib/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { db } from "../lib/firebase";
-import { collection, query, where, onSnapshot } from "firebase/firestore";
+import { collection, query, where, onSnapshot, getDocs, doc, getDoc } from "firebase/firestore";
 
 const MyChildPage = () => {
   const { studentData, user } = useAuth();
   const navigate = useNavigate();
   const [teachers, setTeachers] = useState<any[]>([]);
   const [loadingTeachers, setLoadingTeachers] = useState(true);
+  const [activeEnrollment, setActiveEnrollment] = useState<any>(null);
 
   useEffect(() => {
-    if (!studentData?.schoolId || !studentData?.grade) {
+    if (!studentData?.id) {
       setLoadingTeachers(false);
       return;
     }
 
-    const q = query(
-      collection(db, "teachers"),
-      where("schoolId", "==", studentData.schoolId),
-      where("classes", "==", studentData.grade)
-    );
+    setLoadingTeachers(true);
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const colors = ["bg-indigo-600", "bg-emerald-600", "bg-amber-600", "bg-rose-600", "bg-indigo-800"];
-      const data = snapshot.docs.map((doc, idx) => {
-        const t = doc.data();
-        const isClassTeacher = studentData.teacherId === doc.id;
+    // 1. Fetch Official Enrollments to identify truly assigned educators
+    const qEnroll = query(collection(db, "enrollments"), where("studentId", "==", studentData.id));
+    
+    const unsubEnroll = onSnapshot(qEnroll, async (enrollSnap) => {
+        const enrollments = enrollSnap.docs.map(d => ({ id: d.id, ...d.data() }));
         
-        return {
-          id: doc.id,
-          initials: t.name ? t.name.split(' ').map((n: string) => n[0]).join('').toUpperCase() : "T",
-          name: t.name,
-          subject: isClassTeacher ? `Class Teacher • ${t.subject}` : t.subject,
-          color: colors[idx % colors.length],
-          isClassTeacher
-        };
-      });
-
-      data.sort((a, b) => (b.isClassTeacher ? 1 : 0) - (a.isClassTeacher ? 1 : 0));
-      setTeachers(data);
-      setLoadingTeachers(false);
-    }, (error) => {
-      console.error("Error fetching teachers:", error);
-      setLoadingTeachers(false);
+        if (enrollments.length > 0) {
+            // Pick the first one as primary enrollment for metadata (Grade/Roll)
+            setActiveEnrollment(enrollments[0]);
+            
+            // Extract all unique teacher IDs from enrollments
+            const teacherIds = Array.from(new Set(enrollments.map((e: any) => e.teacherId))).filter(id => !!id);
+            
+            if (teacherIds.length > 0) {
+                // Fetch the actual teacher objects
+                const teachersData: any[] = [];
+                const colors = ["bg-indigo-600", "bg-emerald-600", "bg-amber-600", "bg-rose-600", "bg-indigo-800"];
+                
+                for (const tId of teacherIds) {
+                    try {
+                        const tDoc = await getDoc(doc(db, "teachers", tId));
+                        if (tDoc.exists()) {
+                            const t = tDoc.data();
+                            
+                            teachersData.push({
+                                id: tDoc.id,
+                                initials: t.name ? t.name.split(' ').map((n: string) => n[0]).join('').toUpperCase() : "T",
+                                name: t.name,
+                                subject: t.subject || "Academic Faculty",
+                                color: colors[teachersData.length % colors.length],
+                                isClassTeacher: true
+                            });
+                        } else {
+                            // Fallback if teacher record is missing but ID exists in enrollment
+                            teachersData.push({
+                                id: tId,
+                                initials: "T",
+                                name: "Faculty Member",
+                                subject: "Academic Dept",
+                                color: "bg-slate-400"
+                            });
+                        }
+                    } catch (e) { console.error(e); }
+                }
+                setTeachers(teachersData);
+            } else {
+                setTeachers([]);
+            }
+        } else {
+            setTeachers([]);
+        }
+        setLoadingTeachers(false);
     });
 
-    return () => unsubscribe();
-  }, [studentData?.schoolId, studentData?.grade, studentData?.teacherId]);
+    return () => unsubEnroll();
+  }, [studentData?.id]);
+
+  const displayGrade = activeEnrollment?.grade || activeEnrollment?.className || studentData?.grade || "N/A";
+  const displayRoll = activeEnrollment?.rollNo || studentData?.rollNo || "N/A";
 
   return (
-      <div className="space-y-8 animate-in fade-in duration-700 pb-12">
+      <div className="space-y-8 animate-in fade-in duration-700 pb-12 text-left">
         
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
            <div className="space-y-1">
               <h1 className="text-3xl font-black text-slate-800 tracking-tight">Student Identity</h1>
-              <p className="text-slate-400 font-bold uppercase tracking-widest text-[11px]">Authorized Academic Profile Profile • 2025-26 Session</p>
+              <p className="text-slate-400 font-bold uppercase tracking-widest text-[11px]">Authorized Academic Profile • 2025-26 Session</p>
            </div>
            <button 
              onClick={() => navigate('/settings')}
@@ -83,12 +113,12 @@ const MyChildPage = () => {
               </div>
 
               <div className="flex-1 space-y-6">
-                 <div>
-                    <h2 className="text-4xl font-black text-slate-800 tracking-tight mb-2">{studentData?.name || "Student Name"}</h2>
-                    <div className="flex flex-wrap items-center justify-center lg:justify-start gap-3">
-                       <span className="px-4 py-1.5 bg-indigo-50 text-indigo-600 text-[10px] font-black uppercase tracking-[0.2em] rounded-full border border-indigo-100 uppercase">Grade {studentData?.grade || "N/A"}</span>
-                       <span className="px-4 py-1.5 bg-emerald-50 text-emerald-600 text-[10px] font-black uppercase tracking-[0.2em] rounded-full border border-emerald-100 uppercase tracking-widest">Roll: {studentData?.rollNo || "N/A"}</span>
-                       <span className="px-4 py-1.5 bg-amber-50 text-amber-600 text-[10px] font-black uppercase tracking-[0.2em] rounded-full border border-amber-100 uppercase tracking-widest">Active Enrollment</span>
+                 <div className="text-left">
+                    <h2 className="text-4xl font-black text-slate-800 tracking-tight mb-2 uppercase italic">{studentData?.name || "Student Name"}</h2>
+                    <div className="flex flex-wrap items-center justify-start gap-3">
+                       <span className="px-4 py-1.5 bg-indigo-50 text-indigo-600 text-[10px] font-black uppercase tracking-[0.2em] rounded-full border border-indigo-100 italic">Grade {displayGrade}</span>
+                       <span className="px-4 py-1.5 bg-emerald-50 text-emerald-600 text-[10px] font-black uppercase tracking-[0.2em] rounded-full border border-emerald-100 italic">Roll: {displayRoll}</span>
+                       <span className="px-4 py-1.5 bg-amber-50 text-amber-600 text-[10px] font-black uppercase tracking-[0.2em] rounded-full border border-amber-100 italic">Verified Record</span>
                     </div>
                  </div>
 
@@ -105,14 +135,14 @@ const MyChildPage = () => {
         {/* Teachers & Faculty */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
            <div className="lg:col-span-12">
-              <div className="bg-white rounded-[2.5rem] border-2 border-slate-50 p-10 shadow-sm">
+              <div className="bg-white rounded-[2.5rem] border-2 border-slate-50 p-10 shadow-sm text-left">
                  <div className="flex items-center justify-between mb-8 pb-6 border-b border-slate-50">
                     <h3 className="text-lg font-black text-slate-800 uppercase tracking-widest flex items-center gap-3">
                        <GraduationCap className="w-6 h-6 text-indigo-600" /> Assigned Educators
                     </h3>
                     <div className="flex items-center gap-2">
-                       <div className="w-2 h-2 rounded-full bg-emerald-500" />
-                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Authorized Faculty</span>
+                       <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Real-time Faculty Sync</span>
                     </div>
                  </div>
                  
@@ -120,27 +150,30 @@ const MyChildPage = () => {
                     {loadingTeachers ? (
                        <div className="col-span-full py-20 flex flex-col items-center justify-center">
                           <Loader2 className="w-10 h-10 animate-spin text-indigo-600 mb-4" />
-                          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Verifying Faculty Database...</p>
+                          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Auditing Institutional Faculty...</p>
                        </div>
                     ) : teachers.length > 0 ? (
                        teachers.map((t) => (
-                          <div key={t.id} className="p-6 bg-slate-50 rounded-[2rem] border-2 border-transparent hover:border-indigo-100 hover:bg-white transition-all group hover:shadow-xl hover:shadow-indigo-50">
-                             <div className="flex items-center justify-between mb-4">
-                                <div className={`w-14 h-14 rounded-2xl ${t.color} flex items-center justify-center text-white text-xl font-black shadow-lg shadow-black/10`}>{t.initials}</div>
-                                <button className="p-3 bg-white rounded-xl border border-slate-100 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all">
+                          <div key={t.id} className="p-8 bg-slate-50/50 rounded-[2.5rem] border-2 border-transparent hover:border-indigo-100 hover:bg-white transition-all group hover:shadow-2xl hover:shadow-indigo-50 text-left">
+                             <div className="flex items-center justify-between mb-6">
+                                <div className={`w-16 h-16 rounded-[1.5rem] ${t.color} flex items-center justify-center text-white text-2xl font-black shadow-xl`}>{t.initials}</div>
+                                <button className="p-3.5 bg-white rounded-2xl border border-slate-100 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all shadow-sm">
                                    <Mail className="w-5 h-5" />
                                 </button>
                              </div>
                              <div>
-                                <h4 className="text-lg font-black text-slate-800 leading-none mb-1 group-hover:text-indigo-600 transition-colors">{t.name}</h4>
-                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{t.subject}</p>
+                                <h4 className="text-xl font-black text-slate-800 leading-none mb-2 group-hover:text-indigo-600 transition-colors uppercase italic">{t.name}</h4>
+                                <p className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400 flex items-center gap-2">
+                                    <BookOpen className="w-3.5 h-3.5" /> {t.subject}
+                                </p>
                              </div>
                           </div>
                        ))
                     ) : (
-                       <div className="col-span-full py-20 text-center opacity-30">
-                          <User className="w-16 h-16 mx-auto mb-4" />
-                          <p className="text-[11px] font-black uppercase tracking-widest">No assigned faculty records found.</p>
+                       <div className="col-span-full py-24 text-center bg-slate-50/50 rounded-[3rem] border-4 border-dashed border-slate-100">
+                          <User className="w-20 h-20 mx-auto mb-4 text-slate-200" />
+                          <p className="text-[12px] font-black uppercase tracking-[0.3em] text-slate-400">No Educator Assignments Detected</p>
+                          <p className="text-[10px] font-bold text-slate-300 mt-2 italic px-4">Faculty names will appear here once student is added to a class by the teacher.</p>
                        </div>
                     )}
                  </div>
@@ -149,10 +182,10 @@ const MyChildPage = () => {
         </div>
 
         {/* Career & Recognition Connection */}
-        <div className="bg-slate-900 rounded-[2.5rem] p-10 text-white flex flex-col md:flex-row items-center justify-between gap-10 overflow-hidden relative shadow-2xl">
+        <div className="bg-slate-900 rounded-[2.5rem] p-10 text-white flex flex-col md:flex-row items-center justify-between gap-10 overflow-hidden relative shadow-2xl text-left">
            <Award className="absolute -left-12 -bottom-12 w-64 h-64 text-white/5 pointer-events-none" />
-           <div className="relative z-10 max-w-2xl">
-              <h3 className="text-2xl font-black tracking-tight mb-4">Scholastic Milestone Verification</h3>
+           <div className="relative z-10 max-w-2xl text-left">
+              <h3 className="text-2xl font-black tracking-tight mb-4 italic uppercase">Scholastic Milestone Verification</h3>
               <p className="text-sm font-bold text-slate-400 leading-relaxed mb-6">
                  {studentData?.name}'s profile is verified for the academic term. All grades and behavior records are automatically synced with the teacher portal for peak transparency.
               </p>
@@ -173,12 +206,12 @@ const MyChildPage = () => {
 };
 
 const InfoBox = ({ label, value, icon }: any) => (
-   <div className="p-5 bg-slate-50/50 rounded-2xl border border-slate-100">
+   <div className="p-5 bg-slate-50/50 rounded-2xl border border-slate-100 text-left">
       <div className="flex items-center gap-2 mb-2 text-slate-400">
          {icon}
          <p className="text-[10px] uppercase font-black tracking-[0.2em] leading-none">{label}</p>
       </div>
-      <p className="text-sm font-black text-slate-800 truncate">{value || 'N/A'}</p>
+      <p className="text-sm font-black text-slate-800 truncate uppercase italic">{value || 'N/A'}</p>
    </div>
 );
 

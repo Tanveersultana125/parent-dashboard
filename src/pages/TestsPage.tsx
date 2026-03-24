@@ -11,23 +11,29 @@ import { collection, query, where, onSnapshot } from "firebase/firestore";
 const TestsPage = () => {
   const { studentData } = useAuth();
   const [loading, setLoading] = useState(true);
-  const [grades, setGrades] = useState<any>(null);
+  const [testResults, setTestResults] = useState<any[]>([]);
 
   useEffect(() => {
     if (!studentData?.id) return;
 
     setLoading(true);
+    // Fetch live scores from the universal test_scores matrix
     const q = query(
-      collection(db, "grades"),
+      collection(db, "test_scores"),
       where("studentId", "==", studentData.id)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      if (!snapshot.empty) {
-        setGrades(snapshot.docs[0].data());
-      } else {
-        setGrades(null);
-      }
+      const results = snapshot.docs.map(d => ({id: d.id, ...d.data()}));
+      
+      // Sort by latest timestamp
+      results.sort((a: any, b: any) => {
+         const dA = a.timestamp?.toDate() || 0;
+         const dB = b.timestamp?.toDate() || 0;
+         return dB - dA;
+      });
+
+      setTestResults(results);
       setLoading(false);
     }, (error) => {
       console.error("Grades Sync Error:", error);
@@ -37,14 +43,8 @@ const TestsPage = () => {
     return () => unsubscribe();
   }, [studentData]);
 
-  const testCategories = [
-    { name: "Unit Test 1", score: grades?.ut1, max: 50 },
-    { name: "Unit Test 2", score: grades?.ut2, max: 50 },
-    { name: "Mid Term", score: grades?.mid, max: 100 },
-    { name: "Quiz 1", score: grades?.q1, max: 10 },
-    { name: "Quiz 2", score: grades?.q2, max: 10 },
-    { name: "Project", score: grades?.proj, max: 50 },
-  ].filter(t => t.score !== undefined && t.score !== null);
+  const totalPoints = testResults.reduce((sum, t) => sum + (t.score || 0), 0);
+  const maxPointsPossible = testResults.reduce((sum, t) => sum + (t.maxScore || 0), 0);
 
   return (
       <div className="space-y-8 animate-in fade-in duration-700 pb-12">
@@ -64,8 +64,7 @@ const TestsPage = () => {
           </div>
         </div>
 
-        {/* FEATURE 22: Upcoming Test Banner (Simulated or via separate collection) */}
-        {!loading && testCategories.length === 0 ? (
+        {!loading && testResults.length === 0 ? (
             <div className="bg-gradient-to-br from-indigo-600 to-blue-700 rounded-[2.5rem] p-10 text-white shadow-2xl relative overflow-hidden group">
                  <div className="absolute top-0 right-0 p-10 opacity-10 group-hover:scale-110 transition-transform">
                     <Calendar className="w-40 h-40" />
@@ -88,12 +87,12 @@ const TestsPage = () => {
                 <div className="relative z-10">
                     <h2 className="text-3xl font-black mb-4">Latest Achievement Sweep</h2>
                     <p className="text-indigo-100 font-bold opacity-80 mb-6 max-w-lg">
-                        {studentData?.name}'s academic trajectory is being monitored by our AI engine. {testCategories.length} marks recorded so far.
+                        {studentData?.name}'s academic trajectory is being monitored by our AI engine. {testResults.length} assessments officially scored.
                     </p>
                     <div className="flex gap-4">
                         <div className="px-6 py-4 bg-white/10 rounded-2xl border border-white/20">
-                            <p className="text-[10px] font-black uppercase tracking-widest opacity-60 mb-1">Current Points</p>
-                            <p className="text-2xl font-black">{(grades?.ut1 || 0) + (grades?.mid || 0)}</p>
+                            <p className="text-[10px] font-black uppercase tracking-widest opacity-60 mb-1">Accumulated Points</p>
+                            <p className="text-2xl font-black">{totalPoints} <span className="text-sm text-indigo-200">/ {maxPointsPossible}</span></p>
                         </div>
                     </div>
                 </div>
@@ -117,7 +116,7 @@ const TestsPage = () => {
                       <Loader2 className="w-12 h-12 text-indigo-600 animate-spin mx-auto mb-4" />
                       <p className="text-sm font-black text-indigo-600 uppercase tracking-widest">Compiling academic records...</p>
                   </div>
-              ) : testCategories.length === 0 ? (
+              ) : testResults.length === 0 ? (
                   <div className="py-24 text-center bg-white border-2 border-slate-50 rounded-[2.5rem] flex flex-col items-center">
                       <div className="w-20 h-20 bg-slate-50 border-2 border-slate-100 rounded-[2rem] flex items-center justify-center mb-6 shadow-sm">
                           <Award className="w-9 h-9 text-slate-200" />
@@ -129,9 +128,9 @@ const TestsPage = () => {
                   </div>
               ) : (
                   <div className="space-y-4">
-                    {testCategories.map((test) => (
+                    {testResults.map((test) => (
                       <div 
-                        key={test.name}
+                        key={test.id}
                         className="bg-white rounded-[2rem] border-2 border-slate-50 p-6 flex flex-col md:flex-row md:items-center justify-between gap-6 hover:shadow-xl hover:border-indigo-100 transition-all group"
                       >
                          <div className="flex items-center gap-5">
@@ -139,18 +138,23 @@ const TestsPage = () => {
                                <CheckCircle className="w-6 h-6" />
                             </div>
                             <div>
-                               <h4 className="text-lg font-black text-slate-800 leading-tight mb-1">{test.name}</h4>
-                               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{new Date().toLocaleDateString()} • Verified</p>
+                               <h4 className="text-lg font-black text-slate-800 leading-tight mb-1">{test.testName}</h4>
+                               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                  {test.timestamp?.toDate().toLocaleDateString() || "Recent"} • Verified
+                               </p>
                             </div>
                          </div>
                          <div className="flex items-center gap-6">
                             <div className="text-right">
-                               <p className="text-2xl font-black text-slate-800 tracking-tighter">{test.score}/{test.max}</p>
-                               <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">{Math.round((test.score / test.max) * 100)}% Mastered</p>
+                               <p className="text-2xl font-black text-slate-800 tracking-tighter">
+                                  {test.isAbsent ? "ABSENT" : `${test.score}/${test.maxScore}`}
+                               </p>
+                               {!test.isAbsent && (
+                                  <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">
+                                     {test.percentage?.toFixed(0)}% • Grade {test.grade}
+                                  </p>
+                               )}
                             </div>
-                            <button className="p-3 bg-slate-50 rounded-xl hover:bg-slate-900 hover:text-white transition-all">
-                               <ChevronRight className="w-5 h-5" />
-                            </button>
                          </div>
                       </div>
                     ))}
@@ -165,20 +169,20 @@ const TestsPage = () => {
                     <TrendingUp className="w-5 h-5 text-emerald-500" /> Topic Mastery Audit
                  </h3>
                  <div className="space-y-8">
-                    {testCategories.length === 0 ? (
+                    {testResults.length === 0 ? (
                         <div className="p-8 text-center border-2 border-dashed border-slate-50 rounded-3xl">
                              <Info className="w-8 h-8 text-slate-200 mx-auto mb-4" />
                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-relaxed">AI analysis will populate after real-time data sync.</p>
                         </div>
                     ) : (
-                        testCategories.slice(0, 3).map((topic, i) => (
+                        testResults.slice(0, 3).map((topic, i) => (
                            <div key={i} className="space-y-3">
                               <div className="flex items-center justify-between">
-                                 <p className="text-xs font-black text-slate-700 uppercase tracking-widest">{topic.name}</p>
-                                 <span className="text-xs font-black text-indigo-600">{Math.round((topic.score / topic.max) * 100)}%</span>
+                                 <p className="text-[11px] font-black text-slate-700 uppercase tracking-widest truncate mr-4">{topic.testName}</p>
+                                 <span className="text-xs font-black text-indigo-600">{topic.percentage?.toFixed(0) || 0}%</span>
                               </div>
                               <div className="w-full h-2.5 bg-slate-50 rounded-full overflow-hidden border border-slate-100">
-                                 <div className="h-full bg-indigo-600 rounded-full" style={{ width: `${(topic.score / topic.max) * 100}%` }} />
+                                 <div className="h-full bg-indigo-600 rounded-full" style={{ width: `${topic.percentage || 0}%` }} />
                               </div>
                            </div>
                         ))
