@@ -10,38 +10,35 @@ const openai = new OpenAI({
     apiKey: "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" 
 });
 
-export const getAITutorGuidance = functions.https.onCall(async (data, context) => {
+export const getParentAITutor = functions.https.onCall(async (data, context) => {
     try {
-        const { pdfUrl, title, description, question } = data;
+        const { pdfUrl, title, description, question, type, topic, target_class, students_count } = data;
 
-        console.log("AI Tutoring Request:", title);
+        console.log("AI Request Type:", type || "tutor");
 
         let pdfText = "";
         if (pdfUrl) {
-            console.log("Downloading PDF:", pdfUrl);
-            const response = await axios.get(pdfUrl, { responseType: 'arraybuffer' });
-            const buffer = Buffer.from(response.data);
-            const pdfData = await pdf(buffer);
-            pdfText = pdfData.text.replace(/\r?\n|\r/g, " ");
+            try {
+                console.log("Downloading PDF:", pdfUrl);
+                const response = await axios.get(pdfUrl, { responseType: 'arraybuffer' });
+                const buffer = Buffer.from(response.data);
+                const pdfData = await pdf(buffer);
+                pdfText = pdfData.text.replace(/\r?\n|\r/g, " ");
+            } catch (err) {
+                console.warn("PDF scan failed, continuing with context only.");
+            }
         }
 
-        const systemPrompt = `
-You are a friendly and motivating AI Tutor for EduIntellect.
-Help students understand their assignments without giving direct answers.
-        `;
+        let systemPrompt = "You are a friendly AI Tutor for EduIntellect.";
+        let userPrompt = `Context: ${description}\nText: ${pdfText}\nQuery: ${question}`;
 
-        const userPrompt = `
-Assignment: ${title}
-Context: ${description}
-Text content: ${pdfText.substring(0, 15000)}
-
-Student Query: ${question || "Analyze this."}
-
-Return JSON with: tutor_analysis, action_plan, assignment_hints, discussion_points.
-        `;
+        if (type === "calibration") {
+            systemPrompt = "You are an expert Curriculum Designer for EduIntellect.";
+            userPrompt = `Generate a calibrated assignment for Class: ${target_class} (${students_count} students) on Topic: ${topic || title}. Return JSON with: generated_assignment { title, description }.`;
+        }
 
         const completion = await openai.chat.completions.create({
-            model: "gpt-4o",
+            model: "gpt-4o-mini",
             messages: [
                 { role: "system", content: systemPrompt },
                 { role: "user", content: userPrompt }

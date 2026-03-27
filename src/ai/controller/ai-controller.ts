@@ -112,7 +112,7 @@ export const ParentAIController = {
   async getConceptIntelligence(data: any): Promise<any> {
     if (!data) return { status: "no_data", message: NO_DATA_MSG };
     try {
-      const getGuidance = httpsCallable(functions, 'getAITutorGuidance');
+      const getGuidance = httpsCallable(functions, 'getParentAITutor');
       const result: any = await getGuidance(data);
       if (result.data.status === "error") throw new Error(result.data.message);
       return { status: "success", data: result.data.data, source: "cloud-function" };
@@ -124,7 +124,7 @@ export const ParentAIController = {
 
   async getAssignmentIntelligence(data: any): Promise<any> {
     try {
-      const getGuidance = httpsCallable(functions, 'getAITutorGuidance');
+      const getGuidance = httpsCallable(functions, 'getParentAITutor');
       const result: any = await getGuidance(data);
       if (result.data.status === "error") throw new Error(result.data.message);
       return { status: "success", data: result.data.data, source: "cloud-function" };

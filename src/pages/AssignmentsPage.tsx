@@ -145,6 +145,7 @@ const AssignmentsPage = () => {
       const result = await ParentAIController.getAssignmentIntelligence({
         title: assignment.title,
         description: assignment.description,
+        pdfUrl: assignment.pdfUrl,
         fileContent: fileContent,
         type: "tutor_init"
       });
