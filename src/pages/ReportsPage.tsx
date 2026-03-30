@@ -7,6 +7,7 @@ import { useAuth } from "../lib/AuthContext";
 import { db } from "../lib/firebase";
 import { collection, query, where, onSnapshot, orderBy } from "firebase/firestore";
 import { toast } from "sonner";
+import * as XLSX from 'xlsx';
 
 const ReportsPage = () => {
   const { studentData } = useAuth();
@@ -28,7 +29,8 @@ const ReportsPage = () => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
       // Client-side filtering and sorting to bypass index requirement
       const filtered = data
-        .filter(r => r.grade === studentData.grade || r.studentId === studentData.id || r.studentId === "all")
+        .filter(r => (r.grade === studentData.grade || r.studentId === studentData.id || r.studentId === "all") && 
+                    (r.status === "Sent" || r.status === "Sent & Reported" || r.publishedToParent === true))
         .sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
 
       setReports(filtered);
@@ -47,7 +49,37 @@ const ReportsPage = () => {
   );
 
   const handleDownload = (r: any) => {
-    toast.success(`Securely downloading ${r.title} as ${r.format?.toUpperCase()}...`);
+    if (r.format === 'excel') {
+      let dataToExport: any[] = [];
+      
+      const reportData = r.data || {};
+      
+      if (reportData.isClassReport) {
+        dataToExport = (reportData.fullList || []).map((s: any) => ({ 
+          'Student Name': s.name, 
+          'Roll Number': s.rollNo, 
+          'Academic Score (%)': s.score || 'N/A', 
+          'Attendance Rate (%)': s.attendance, 
+          'Academic Standing': s.standing 
+        }));
+      } else {
+        dataToExport = [{ 
+          'Student Name': reportData.student_name || r.studentName, 
+          'Academic Score': reportData.score || 'N/A', 
+          'Attendance (%)': reportData.atnd || reportData.attendance, 
+          'AI Summary': reportData.ai_remark || reportData.aiRemarks 
+        }];
+      }
+      
+      const ws = XLSX.utils.json_to_sheet(dataToExport);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Institutional Intelligence");
+      XLSX.writeFile(wb, `${r.title}_Report_${new Date().getTime()}.xlsx`);
+      toast.success("Excel Spreadsheet successfully generated!");
+    } else {
+      window.print();
+      toast.success("Opening Institutional Print View...");
+    }
   };
 
   return (
@@ -105,9 +137,9 @@ const ReportsPage = () => {
                             </div>
                             <div className="flex-1">
                                <h3 className="text-xl font-black text-slate-800 tracking-tight group-hover:text-indigo-600 transition-colors uppercase italic mb-0.5">{r.title}</h3>
-                               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
-                                  <GraduationCap className="w-3 h-3"/> {r.teacherName || "Faculty"} • <Calendar className="w-3 h-3"/> {new Date(r.createdAt?.toDate?.()).toLocaleDateString('en-US', { day: 'numeric', month: 'short' })}
-                               </p>
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                                   <GraduationCap className="w-3 h-3"/> {r.teacherName || "Faculty"} • <Clock className="w-3 h-3"/> {new Date(r.createdAt?.toDate?.()).toLocaleString('en-US', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                </p>
                             </div>
                          </div>
 

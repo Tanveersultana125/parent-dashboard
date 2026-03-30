@@ -56,16 +56,23 @@ const TestsPage = () => {
         return () => unsubTests();
     });
 
-    // 3. Fetch Student Test Scores
+    // 3. Fetch Student Test Scores (Removed server-side orderBy to bypass indexing requirements)
     const qScores = query(
         collection(db, "test_scores"), 
         where("studentId", "==", studentData.id),
-        orderBy("timestamp", "desc"),
         limit(20)
     );
 
     const unsubScores = onSnapshot(qScores, (snap) => {
-        const scores = snap.docs.map(d => ({ id: d.id, ...(d.data() as any) }));
+        // Sort client-side to avoid "Query requires an index" error
+        const scores = snap.docs
+          .map(d => ({ id: d.id, ...(d.data() as any) }))
+          .sort((a, b) => {
+            const timeA = a.timestamp?.toMillis?.() || new Date(a.timestamp || 0).getTime();
+            const timeB = b.timestamp?.toMillis?.() || new Date(b.timestamp || 0).getTime();
+            return timeB - timeA; // Latest first
+          });
+
         setRecentResults(scores);
 
         let a=0, b=0, c=0, d=0;

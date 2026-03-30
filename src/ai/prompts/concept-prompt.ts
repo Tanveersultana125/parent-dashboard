@@ -23,40 +23,49 @@ RULES:
 - Return ONLY a JSON object.
 `;
 
-export const getMasteryAnalysisPrompt = (studentName: string, data: { scores: any[], assignments: any[], global_context?: any[] }) => `
-System: EduIntellect Cognitive Analyzer (V2)
-Analyze the following academic datasets for ${studentName} to identify deep concept mastery. 
+export const getMasteryAnalysisPrompt = (studentName: string, data: { scores: any[], assignments: any[], attendance?: any[], global_context?: any[], enrolled_subjects?: string[] }) => `
+System: EduIntellect Reality Analyzer (V6 - Database Mapping Edition)
+Analyze the specific academic items for ${studentName} and categorize them into Strong, Developing, and Attention Required columns.
 
 DATASETS:
 1. TEST SCORES (Assessments):
 ${JSON.stringify(data.scores, null, 2)}
 
-2. ASSIGNMENT SUBMISSIONS (Practical Application):
+2. ASSIGNMENTS:
 ${JSON.stringify(data.assignments, null, 2)}
 
-3. GLOBAL CURRICULUM CONTEXT (Overall Proficiency):
-${JSON.stringify(data.global_context || [], null, 2)}
-
 TASK:
-1. Cross-reference Test names and Assignment titles to identify core "Concepts" (topics).
-2. Calculate Mastery Level (0-100) using a weighted algorithm:
-   - Tests have 70% weight (Examination Performance).
-   - Assignments have 30% weight (Practical Consistency).
-3. RELATIVE ANALYSIS: Compare the performance of the current subject against the GLOBAL CURRICULUM CONTEXT.
-4. Categorize into: Strong (>= 85%), Developing (70-84%), Needs Work (< 70%).
-5. Return a "Narrative Synthesis" that EXPLICITLY mentions:
-   - How the student is doing in THIS subject compared to Others.
-   - Which subject has the highest IQ Pulse and which has the lowest based on global data.
-   - A strategic recommendation for the parent.
+1. DATA MAPPING: Look at the "Title" or "Description" of each Test and Assignment. 
+2. CATEGORIZATION:
+   - STRONG: Items with Score >= 85% or Grade A.
+   - DEVELOPING: Items with Score 70-84% or Grade B/C.
+   - ATTENTION: Items with Score < 70% or Grade D/F/Needs Work.
+3. AI FEEDBACK: For EACH individual item, provide a very short (1 sentence) specific AI message explaining the performance based on that score.
+4. SUBJECT GROUPING: Group these items by their subject (using the enrolled subjects provided).
+
+ENROLLED SUBJECTS:
+${JSON.stringify(data.enrolled_subjects || [], null, 2)}
 
 RETURN FORMAT (JSON ONLY):
 {
-  "matrix": {
-    "strong": [{"name": "Topic", "val": 90, "evidence": "Consistent high scores in tests and assignments"}],
-    "developing": [{"name": "Topic", "val": 75, "evidence": "Good practice, but examination friction detected"}],
-    "needs_work": [{"name": "Topic", "val": 60, "evidence": "Immediate remediation required"}]
-  },
-  "overall_summary": "Short narrative summary.",
-  "identified_topics": ["List of unique topics"]
+  "subjects": {
+    "Mathematics": {
+      "strong": [
+         { "title": "Linear Algebra Quiz", "score": "95/100", "ai_msg": "Flawless execution of linear equations." }
+      ],
+      "developing": [
+         { "title": "Polynomials Assignment", "score": "B", "ai_msg": "Good understanding but missed a few core patterns." }
+      ],
+      "attention": [
+         { "title": "Unit 1 Mid-Term", "score": "62/100", "ai_msg": "Needs thorough review of basic theorems before moving forward." }
+      ]
+    }
+  }
 }
+
+RULES:
+- ONLY use titles and scores that exist in the provided JSON datasets.
+- DO NOT invent topics (like "Trigonometry") if no record exists for it.
+- Return raw JSON. No markdown.
 `;
+

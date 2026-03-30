@@ -1,185 +1,520 @@
 import React, { useState, useEffect } from "react";
 import { 
-  GraduationCap, BookOpen, User, ChevronDown, 
-  Loader2, Users, Presentation, Layout, 
-  MousePointer2, ShieldCheck, ArrowRight, Sparkles, Target 
+  CheckCircle2, 
+  CircleDashed, 
+  AlertCircle, 
+  Lightbulb, 
+  Loader2,
+  Sparkles,
+  TrendingUp,
+  Layout,
+  GraduationCap
 } from "lucide-react";
+import { 
+  LineChart, 
+  Line, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  ResponsiveContainer
+} from 'recharts';
 import { useAuth } from "../lib/AuthContext";
 import { db } from "../lib/firebase";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
+import { ParentAIController } from "../ai/controller/ai-controller";
 
 const ConceptStrengthsPage = () => {
   const { studentData } = useAuth();
   const [enrollments, setEnrollments] = useState<any[]>([]);
-  const [allScores, setAllScores] = useState<any[]>([]); // New state for performance
+  const [allScores, setAllScores] = useState<any[]>([]);
+  const [attendance, setAttendance] = useState<any[]>([]);
+  const [assignments, setAssignments] = useState<any[]>([]);
+  const [aiAnalysis, setAiAnalysis] = useState<any>(null);
+  const [activeSubject, setActiveSubject] = useState<string>("");
   const [loading, setLoading] = useState(true);
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
 
   useEffect(() => {
     if (!studentData?.id) return;
+    setLoading(true);
     
-    // 1. Sync Enrollments
+    // Sync Enrollments
     const qEnroll = query(collection(db, "enrollments"), where("studentId", "==", studentData.id));
     const unsubEnroll = onSnapshot(qEnroll, (snap) => {
-      const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      setEnrollments(data.sort((a: any, b: any) => (a.subject || "").localeCompare(b.subject || "")));
+      const data = snap.docs.map(d => ({ id: d.id, ...d.data() } as any));
+      // Filter out redundant 'General' labels if real classes exist
+      const filtered = data.filter((en: any) => (en.subject || en.className || "").toLowerCase() !== "general");
+      const sorted = filtered.sort((a: any, b: any) => (a.subject || "").localeCompare(b.subject || ""));
+      setEnrollments(sorted);
+      if (!activeSubject) {
+        setActiveSubject("Overview");
+      }
     });
 
-    // 2. Sync Test Scores for performance tracking
+    // Sync Test Scores
     const qScores = query(collection(db, "test_scores"), where("studentId", "==", studentData.id));
     const unsubScores = onSnapshot(qScores, (snap) => {
-      setAllScores(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-      setLoading(false);
+      setAllScores(snap.docs.map(d => ({ id: d.id, ...d.data() } as any)));
     });
 
-    return () => { unsubEnroll(); unsubScores(); };
+    // Sync Attendance
+    const qAtt = query(collection(db, "attendance"), where("studentId", "==", studentData.id));
+    const unsubAtt = onSnapshot(qAtt, (snap) => {
+      setAttendance(snap.docs.map(d => ({ id: d.id, ...d.data() } as any)));
+    });
+
+    // Sync Assignments
+    const qAssign = query(collection(db, "assignments"));
+    const unsubAssign = onSnapshot(qAssign, (snap) => {
+       setAssignments(snap.docs.map(d => ({ id: d.id, ...d.data() } as any)));
+       setLoading(false);
+    });
+
+    return () => { unsubEnroll(); unsubScores(); unsubAtt(); unsubAssign(); };
   }, [studentData?.id]);
+
+  useEffect(() => {
+    const fetchAIInsights = async () => {
+       if (enrollments.length > 0 && !aiAnalysis && !analyzing) {
+          setAnalyzing(true);
+          try {
+             const context = {
+                scores: allScores,
+                assignments: assignments,
+                attendance: attendance,
+                enrolled_subjects: Array.from(new Set(enrollments.map(e => e.subject || e.className || "General")))
+             };
+             const result = await ParentAIController.getRealConceptMastery(studentData?.name || "Student", context);
+             if (result.status === "success") {
+                setAiAnalysis(result.data);
+             }
+          } finally {
+             setAnalyzing(false);
+          }
+       }
+    };
+    fetchAIInsights();
+  }, [enrollments, allScores, assignments, attendance]);
 
   if (loading) {
     return (
       <div className="h-[70vh] flex flex-col items-center justify-center">
         <Loader2 className="w-12 h-12 text-[#1e3a8a] animate-spin mb-4" />
-        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Synchronizing Scholastic Nodes...</p>
+        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 italic">Accessing Concept Node...</p>
       </div>
     );
   }
 
+  // --- LOCAL CATEGORIZATION FALLBACK ---
+  const getLocalMasteryData = () => {
+    // If Overview, show all. If specific subject, filter strictly (but allow General overlap).
+    const subjectScores = allScores.filter(s => {
+      if (activeSubject === "Overview") return true;
+      const sub = (s.subject || s.className || "General").toLowerCase();
+      const active = (activeSubject || "").toLowerCase();
+      // Match subject to tab - OR include General scores if they exist for the student
+      return sub === active || sub.includes(active) || active.includes(sub) || sub === "general";
+    });
+
+    const strong: any[] = [];
+    const developing: any[] = [];
+    const attention: any[] = [];
+
+    subjectScores.forEach(s => {
+      const pct = s.percentage || (s.maxScore ? (s.score / s.maxScore * 100) : 0) || 0;
+      const rawDate = s.timestamp || s.createdAt || s.date;
+      let dateStr = "Recent";
+      if (rawDate) {
+        const d = rawDate.toDate ? rawDate.toDate() : new Date(rawDate);
+        if (!isNaN(d.getTime())) {
+          dateStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        }
+      }
+
+      const item = {
+        title: s.testName || s.title || "Scholastic Unit",
+        score: `${s.score}/${s.maxScore || 100}`,
+        ai_msg: `GRADE DECIDED • ${dateStr.toUpperCase()}`,
+        mastery: `${Math.round(pct)}% MASTERY`
+      };
+
+      if (pct >= 85) strong.push(item);
+      else if (pct >= 70) developing.push(item);
+      else attention.push(item);
+    });
+
+    return { strong, developing, attention };
+  };
+
+  const currentData = aiAnalysis?.subjects?.[activeSubject] || getLocalMasteryData() || {
+    strong: [], developing: [], attention: [], recommended_focus: "Data is being synthesized..."
+  };
+
+  // Generate dynamic chart data from allScores
+  const getChartData = () => {
+    if (allScores.length === 0) return [];
+    
+    // Determine real time span from actual tests
+    const dates = allScores.map(s => {
+       const d = s.timestamp?.toDate ? s.timestamp.toDate() : (s.createdAt?.toDate ? s.createdAt.toDate() : new Date(s.timestamp || s.createdAt || Date.now()));
+       return d.getTime();
+    }).filter(t => !isNaN(t));
+
+    if (dates.length === 0) dates.push(Date.now());
+    
+    const minD = new Date(Math.min(...dates));
+    const maxD = new Date();
+    
+    let startD = new Date(minD.getFullYear(), minD.getMonth(), 1);
+    const endD = new Date(maxD.getFullYear(), maxD.getMonth(), 1);
+    
+    const diff = (endD.getFullYear() - startD.getFullYear()) * 12 + (endD.getMonth() - startD.getMonth());
+    if (diff > 11) {
+       startD = new Date(endD.getFullYear(), endD.getMonth() - 11, 1);
+    } else if (diff === 0) {
+       startD = new Date(endD.getFullYear(), endD.getMonth() - 3, 1);
+    }
+    
+    const monthsInOrder = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const displayMonths: any[] = [];
+    let curr = new Date(startD);
+    while (curr <= endD) {
+       displayMonths.push({ 
+         name: monthsInOrder[curr.getMonth()], 
+         index: curr.getMonth(), 
+         year: curr.getFullYear(),
+         label: `${monthsInOrder[curr.getMonth()]} '${curr.getFullYear().toString().slice(-2)}`
+       });
+       curr.setMonth(curr.getMonth() + 1);
+    }
+
+    const subjectNames = enrollments.length > 0 ? enrollments.map(e => e.subject || e.className || "General") : ["General Achievement"];
+    
+    return displayMonths.map(m => {
+      const entry: any = { month: m.label };
+      subjectNames.forEach(sub => {
+        const subScores = allScores.filter(s => {
+          const sDate = s.timestamp?.toDate ? s.timestamp.toDate() : (s.createdAt?.toDate ? s.createdAt.toDate() : new Date(s.timestamp || s.createdAt || Date.now()));
+          const scoreMonth = sDate.getMonth();
+          const scoreYear = sDate.getFullYear();
+          const scoreSub = (s.subject || s.className || "General").toLowerCase();
+          
+          const sClassId = s.classId || "";
+          const en = enrollments.find(e => (e.subject || e.className || "General") === sub);
+          const enClassId = en?.classId || "";
+
+          const monthMatch = scoreMonth === m.index && scoreYear === m.year;
+          
+          let subjectMatch = false;
+          if (enClassId && sClassId && enClassId === sClassId) {
+             subjectMatch = true;
+          } else {
+             const activeSub = (sub || "").toLowerCase();
+             // Match strictly or inclusively depending on the generic nature
+             subjectMatch = scoreSub.includes(activeSub) || activeSub.includes(scoreSub) || scoreSub === "general" || activeSub === "general";
+          }
+          
+          return monthMatch && subjectMatch;
+        });
+
+        if (subScores.length > 0) {
+          const avg = subScores.reduce((acc, curr) => {
+             const pct = curr.percentage || (curr.maxScore ? (curr.score / curr.maxScore * 100) : 0) || 0;
+             return acc + pct;
+          }, 0) / subScores.length;
+          entry[sub] = Math.round(avg);
+          entry[`${sub}_tests`] = subScores.map(ts => ({
+             topic: ts.testName || ts.title || ts.subject || "Assessment",
+             score: `${ts.score}/${ts.maxScore || 100}`
+          }));
+        } else {
+          entry[sub] = null;
+        }
+      });
+      return entry;
+    });
+  };
+
+  const chartData = enrollments.length > 0 ? getChartData() : [];
+  const subjectList = enrollments.map(e => e.subject || e.className || "General");
+
+  const getWidth = (score: string) => {
+    if (!score) return 50;
+    if (score.includes('%')) return parseInt(score);
+    if (score.includes('/')) {
+      const [got, max] = score.split('/').map(num => parseFloat(num.trim()));
+      if (max > 0) return (got / max) * 100;
+    }
+    const val = parseInt(score);
+    if (!isNaN(val)) return val > 100 ? 100 : val;
+    if (score.startsWith('A')) return 90;
+    if (score.startsWith('B')) return 75;
+    if (score.startsWith('C')) return 60;
+    return 40;
+  };
+
+  const CustomTooltip = ({ active, payload, label }: any) => {
+    if (active && payload && payload.length) {
+      return (
+        <div className="bg-white p-5 rounded-[2rem] shadow-2xl border border-slate-100 min-w-[240px] z-50">
+          <p className="text-sm font-black text-slate-800 uppercase tracking-widest mb-4 border-b border-slate-100 pb-3">{label}</p>
+          <div className="space-y-4">
+          {payload.map((p: any, idx: number) => {
+            const testsData = p.payload[`${p.dataKey}_tests`];
+            return (
+              <div key={idx} className="bg-slate-50/50 rounded-2xl p-3 border border-slate-50">
+                 <div className="flex items-center gap-2 mb-2">
+                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: p.stroke || p.color }} />
+                    <p className="text-[11px] font-black uppercase tracking-widest text-slate-600 line-clamp-1 truncate">{p.dataKey}</p>
+                    <span className="ml-auto text-sm font-black tracking-tighter" style={{ color: p.stroke || p.color }}>{p.value}%</span>
+                 </div>
+                 {testsData && testsData.length > 0 && (
+                   <div className="space-y-1.5 mt-2">
+                     {testsData.map((t: any, i: number) => (
+                        <div key={i} className="flex items-center justify-between text-[10px] bg-white px-2 py-1.5 rounded-lg shadow-sm border border-slate-100">
+                          <span className="text-slate-500 font-bold truncate max-w-[130px]">{t.topic}</span>
+                          <span className="font-black text-slate-800 shrink-0 ml-2">{t.score}</span>
+                        </div>
+                     ))}
+                   </div>
+                 )}
+              </div>
+            )
+          })}
+          </div>
+        </div>
+      );
+    }
+    return null;
+  };
+
   return (
-    <div className="animate-in fade-in slide-in-from-bottom-5 duration-1000 pb-20 font-sans text-left">
+    <div className="animate-in fade-in duration-700 pb-20 font-sans text-left max-w-[1400px] mx-auto">
       
-      {/* ── HEADER SECTION ── */}
-      <div className="mb-12">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center">
-            <Layout className="text-white w-4 h-4" />
-          </div>
-          <h2 className="text-[10px] font-black uppercase tracking-[0.4em] text-indigo-600/60">Curriculum Discovery</h2>
+      {/* ── HEADER ── */}
+      <div className="mb-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+        <div>
+           <div className="flex items-center gap-2 mb-2">
+             <div className="w-2 h-2 rounded-full bg-indigo-600" />
+             <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">Scholastic Matrix</p>
+           </div>
+           <h1 className="text-4xl font-black text-slate-900 tracking-tighter uppercase italic">Concept Strengths</h1>
         </div>
-        <h1 className="text-4xl font-black text-slate-900 tracking-tighter italic">Student Concept Mastery</h1>
+        
+        {analyzing && (
+          <div className="flex items-center gap-3 px-6 py-3 bg-indigo-50 rounded-2xl border border-indigo-100">
+            <Loader2 className="w-4 h-4 text-indigo-600 animate-spin" />
+            <span className="text-xs font-black text-indigo-600 uppercase tracking-widest italic">AI Analysis In Progress...</span>
+          </div>
+        )}
       </div>
 
-      {/* ── STUDENT IDENTITY CARD (CLICKABLE) ── */}
-      <div 
-        onClick={() => setIsExpanded(!isExpanded)}
-        className={`relative group cursor-pointer transition-all duration-500 overflow-hidden rounded-[3rem] border-2 p-10 bg-white ${
-          isExpanded ? "border-indigo-600 shadow-2xl scale-[1.01]" : "border-slate-100 shadow-sm hover:border-slate-300"
-        }`}
-      >
-        {/* Decorative Background */}
-        <div className="absolute top-0 right-0 p-12 opacity-[0.03] pointer-events-none">
-          <GraduationCap size={200} className="text-slate-900 rotate-12" />
+      {/* ── SUBJECT TABS ── */}
+      <div className="flex flex-wrap gap-3 mb-12">
+        <button
+          onClick={() => setActiveSubject("Overview")}
+          className={`px-8 py-3.5 rounded-[1.2rem] text-sm font-black transition-all duration-300 transform border-2 ${
+            activeSubject === "Overview"
+            ? "bg-[#1e3a8a] text-white border-[#1e3a8a] shadow-xl shadow-indigo-100 -translate-y-1" 
+            : "bg-white text-slate-500 border-slate-100 hover:border-indigo-200 hover:text-indigo-600"
+          }`}
+        >
+          Overview
+        </button>
+        {enrollments.map((en) => {
+          const name = en.subject || en.className || "General";
+          const isActive = activeSubject === name;
+          if (name === "Overview") return null; // Avoid duplicates
+          return (
+            <button
+              key={en.id}
+              onClick={() => setActiveSubject(name)}
+              className={`px-8 py-3.5 rounded-[1.2rem] text-sm font-black transition-all duration-300 transform border-2 ${
+                isActive 
+                ? "bg-[#1e3a8a] text-white border-[#1e3a8a] shadow-xl shadow-indigo-100 -translate-y-1" 
+                : "bg-white text-slate-500 border-slate-100 hover:border-indigo-200 hover:text-indigo-600"
+              }`}
+            >
+              {name}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ── 3-COLUMN CONCEPT GRID ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-16">
+        
+        {/* COLUMN 1: STRONG */}
+        <div className="bg-[#f8fafc] rounded-[2.5rem] p-8 border border-slate-100/50">
+           <div className="flex items-center gap-3 mb-8">
+              <div className="w-10 h-10 rounded-2xl bg-emerald-100 text-emerald-600 flex items-center justify-center">
+                 <CheckCircle2 size={20} />
+              </div>
+              <h3 className="text-xl font-black text-slate-800 tracking-tight italic">Strong</h3>
+           </div>
+           
+           <div className="space-y-4">
+              {currentData.strong && currentData.strong.length > 0 ? currentData.strong.map((c: any, i: number) => (
+                <div key={i} className="bg-white p-6 rounded-[2.5rem] shadow-sm hover:shadow-md transition-all flex items-center gap-6">
+                   <div className="w-14 h-14 rounded-full border border-slate-100 flex items-center justify-center shrink-0">
+                     <GraduationCap className="w-6 h-6 text-slate-400" />
+                   </div>
+                   
+                   <div className="flex-1">
+                     <h4 className="text-[17px] font-black text-slate-800 tracking-tight leading-none mb-1.5">{c.title}</h4>
+                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{c.ai_msg}</p>
+                   </div>
+                   
+                   <div className="text-right shrink-0">
+                     <p className="text-2xl font-black italic tracking-tighter leading-none mb-1 text-[#10b981]">
+                       {c.score}
+                     </p>
+                     <p className="text-[9px] font-black uppercase tracking-widest text-[#10b981]/80">
+                       {c.mastery}
+                     </p>
+                   </div>
+                </div>
+              )) : (
+                <div className="py-12 flex flex-col items-center justify-center opacity-40">
+                   <CheckCircle2 className="w-8 h-8 text-slate-200 mb-2" />
+                   <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest italic">Awaiting Peak Scores</p>
+                </div>
+              )}
+           </div>
         </div>
 
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-8 relative z-10">
-          <div className="flex items-center gap-6">
-            <div className={`w-20 h-20 rounded-[2rem] flex items-center justify-center text-white text-2xl font-black shadow-xl transition-colors duration-500 ${isExpanded ? 'bg-indigo-600' : 'bg-slate-900'}`}>
-              {studentData?.name?.[0] || <User size={32} />}
-            </div>
+        {/* COLUMN 2: DEVELOPING */}
+        <div className="bg-[#f8fafc] rounded-[2.5rem] p-8 border border-slate-100/50">
+           <div className="flex items-center gap-3 mb-8">
+              <div className="w-10 h-10 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center">
+                 <CircleDashed size={20} className="animate-spin-slow" />
+              </div>
+              <h3 className="text-xl font-black text-slate-800 tracking-tight italic">Developing</h3>
+           </div>
+           
+           <div className="space-y-4">
+              {currentData.developing && currentData.developing.length > 0 ? currentData.developing.map((c: any, i: number) => (
+                <div key={i} className="bg-white p-6 rounded-[2.5rem] shadow-sm hover:shadow-md transition-all flex items-center gap-6">
+                   <div className="w-14 h-14 rounded-full border border-slate-100 flex items-center justify-center shrink-0">
+                     <GraduationCap className="w-6 h-6 text-slate-400" />
+                   </div>
+                   
+                   <div className="flex-1">
+                     <h4 className="text-[17px] font-black text-slate-800 tracking-tight leading-none mb-1.5">{c.title}</h4>
+                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{c.ai_msg}</p>
+                   </div>
+                   
+                   <div className="text-right shrink-0">
+                     <p className="text-2xl font-black italic tracking-tighter leading-none mb-1 text-slate-800">
+                       {c.score}
+                     </p>
+                     <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">
+                       {c.mastery}
+                     </p>
+                   </div>
+                </div>
+              )) : (
+                <div className="py-12 flex flex-col items-center justify-center opacity-40">
+                   <CircleDashed className="w-8 h-8 text-slate-200 mb-2" />
+                   <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest italic">Stable Performance</p>
+                </div>
+              )}
+           </div>
+        </div>
+
+        {/* COLUMN 3: NEEDS ATTENTION */}
+        <div className="bg-[#f8fafc] rounded-[2.5rem] p-8 border border-slate-100/50">
+           <div className="flex items-center gap-3 mb-8">
+              <div className="w-10 h-10 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center">
+                 <AlertCircle size={20} />
+              </div>
+              <h3 className="text-xl font-black text-slate-800 tracking-tight italic">Needs Attention</h3>
+           </div>
+           
+           <div className="space-y-4">
+              {currentData.attention && currentData.attention.length > 0 ? currentData.attention.map((c: any, i: number) => (
+                <div key={i} className="bg-white p-6 rounded-[2.5rem] shadow-sm hover:shadow-md transition-all flex items-center gap-6">
+                   <div className="w-14 h-14 rounded-full border border-slate-100 flex items-center justify-center shrink-0">
+                     <GraduationCap className="w-6 h-6 text-slate-400" />
+                   </div>
+                   
+                   <div className="flex-1">
+                     <h4 className="text-[17px] font-black text-slate-800 tracking-tight leading-none mb-1.5">{c.title}</h4>
+                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{c.ai_msg}</p>
+                   </div>
+                   
+                   <div className="text-right shrink-0">
+                     <p className="text-2xl font-black italic tracking-tighter leading-none mb-1 text-rose-500">
+                       {c.score}
+                     </p>
+                     <p className="text-[9px] font-black uppercase tracking-widest text-rose-500/80">
+                       {c.mastery}
+                     </p>
+                   </div>
+                </div>
+              )) : (
+                <div className="py-12 flex flex-col items-center justify-center opacity-40">
+                   <AlertCircle className="w-8 h-8 text-slate-200 mb-2" />
+                   <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest italic">Target Under Supervision</p>
+                </div>
+              )}
+           </div>
+        </div>
+      </div>
+
+      {/* ── CONCEPT MASTERY PROGRESS CHART ── */}
+      <div className="bg-white rounded-[3rem] p-10 border border-slate-100 shadow-sm">
+         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
             <div>
-              <div className="flex items-center gap-2 mb-1">
-                <Sparkles size={14} className="text-amber-500" />
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Academic Status Portal</p>
-              </div>
-              <h2 className="text-3xl font-black text-slate-900 tracking-tight lowercase first-letter:uppercase">{studentData?.name}</h2>
-              <div className="mt-2 flex items-center gap-3">
-                 <span className="px-4 py-1.5 bg-indigo-50 text-indigo-600 text-[11px] font-black uppercase tracking-widest rounded-full border border-indigo-100">
-                    {studentData?.className || "Main Campus"}
-                 </span>
-                 <span className="text-[11px] font-bold text-slate-300 uppercase tracking-widest">• {enrollments.length} Active Subjects</span>
-              </div>
+               <h3 className="text-2xl font-black text-slate-900 tracking-tighter italic uppercase mb-2">Concept Mastery Progress</h3>
+               <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Temporal Intelligence Analysis</p>
             </div>
-          </div>
+             <div className="flex flex-wrap gap-4 justify-end">
+               {subjectList.slice(0, 4).map((tag, i) => (
+                 <div key={i} className="flex items-center gap-2">
+                    <div className={`w-3 h-3 rounded-full ${i === 0 ? 'bg-emerald-500' : i === 1 ? 'bg-[#1e3a8a]' : i === 2 ? 'bg-rose-500' : 'bg-amber-500'}`} />
+                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">{tag}</span>
+                 </div>
+               ))}
+            </div>
+         </div>
 
-          <div className="flex items-center gap-4">
-            <div className="hidden md:block text-right">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">{isExpanded ? "Close Overview" : "Open Detailed Audit"}</p>
-              <p className="text-xs font-black text-indigo-600 uppercase tracking-tighter">{isExpanded ? "Minimize Stream" : "View Performance"}</p>
-            </div>
-            <div className={`w-14 h-14 rounded-full border-2 flex items-center justify-center transition-all duration-500 ${isExpanded ? 'bg-indigo-600 border-indigo-600 text-white rotate-180' : 'border-slate-200 text-slate-400'}`}>
-              <ChevronDown size={24} />
-            </div>
-          </div>
-        </div>
+         <div className="h-[400px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+               <LineChart data={chartData} margin={{ top: 20, right: 30, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                  <XAxis 
+                    dataKey="month" 
+                    axisLine={false} 
+                    tickLine={false} 
+                    tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 900 }}
+                    dy={10}
+                  />
+                  <YAxis 
+                    axisLine={false} 
+                    tickLine={false} 
+                    tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 900 }}
+                    domain={[0, 100]}
+                  />
+                  <Tooltip content={<CustomTooltip />} cursor={{ stroke: '#f1f5f9', strokeWidth: 2 }} />
+                  {subjectList.slice(0, 4).map((sub, i) => (
+                     <Line 
+                        key={i} 
+                        type="monotone" 
+                        dataKey={sub} 
+                        stroke={i === 0 ? "#10b981" : i === 1 ? "#1e3a8a" : i === 2 ? "#f43f5e" : "#f59e0b"} 
+                        strokeWidth={3} 
+                        dot={{ r: 4, fill: i === 0 ? "#10b981" : i === 1 ? "#1e3a8a" : i === 2 ? "#f43f5e" : "#f59e0b", strokeWidth: 2, stroke: '#fff' }}
+                        activeDot={{ r: 6, strokeWidth: 0 }}
+                        connectNulls
+                     />
+                  ))}
+               </LineChart>
+            </ResponsiveContainer>
+         </div>
       </div>
 
-      {/* ── SUBJECT TILES (REVEALED ON CLICK) ── */}
-      <div className={`mt-10 transition-all duration-700 ease-in-out ${isExpanded ? 'max-h-[3000px] opacity-100 translate-y-0' : 'max-h-0 opacity-0 -translate-y-4 overflow-hidden'}`}>
-        <div className="flex items-center gap-4 mb-8">
-           <div className="w-1.5 h-6 bg-indigo-600 rounded-full" />
-           <h3 className="text-xl font-black text-slate-800 tracking-tight uppercase italic shrink-0">Subject-Wise Mastery Breakdown</h3>
-           <div className="h-px w-full bg-slate-100" />
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-           {enrollments.length > 0 ? (
-             enrollments.map((en, i) => {
-                // Calculate performance for THIS subject
-                const subScores = allScores.filter(s => (s.subject || "").toLowerCase() === (en.subject || "").toLowerCase());
-                const subMastery = subScores.length > 0 
-                  ? Math.round(subScores.reduce((acc, curr) => acc + (curr.percentage || (curr.score/curr.maxScore*100)), 0) / subScores.length)
-                  : 0;
-
-                return (
-                  <div 
-                    key={en.id} 
-                    className="group bg-white rounded-[3rem] border border-slate-100 p-8 shadow-sm hover:shadow-2xl hover:border-indigo-100 hover:-translate-y-1 transition-all duration-500 relative overflow-hidden"
-                  >
-                     {/* Background Graphic */}
-                     <div className="absolute top-0 right-0 p-8 opacity-[0.03] group-hover:scale-110 transition-transform">
-                        <Target size={60} className="text-slate-900" />
-                     </div>
-
-                     <div className="flex items-center justify-between mb-8">
-                        <div className="w-14 h-14 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-colors duration-500 shadow-sm border border-indigo-100/50">
-                           <BookOpen size={24} />
-                        </div>
-                        <div className="text-right">
-                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Current Mastery</p>
-                           <p className={`text-2xl font-black italic tracking-tighter ${subMastery >= 80 ? 'text-emerald-500' : 'text-slate-900'}`}>{subMastery}%</p>
-                        </div>
-                     </div>
-
-                     <h4 className="text-2xl font-black text-slate-900 tracking-tighter italic mb-8 uppercase leading-none">{en.subject}</h4>
-                     
-                     {/* PERFORMANCE BAR */}
-                     <div className="mb-8">
-                        <div className="flex justify-between items-end mb-2">
-                           <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.2em]">Academic Pulse</p>
-                           <p className="text-[10px] font-black text-slate-500 uppercase">{subMastery >= 80 ? 'Mastery High' : subMastery >= 60 ? 'Developing' : 'Critical Focus'}</p>
-                        </div>
-                        <div className="w-full h-2 bg-slate-50 rounded-full overflow-hidden border border-slate-100">
-                           <div 
-                             className={`h-full transition-all duration-1000 ${subMastery >= 80 ? 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.3)]' : subMastery >= 60 ? 'bg-amber-400' : 'bg-rose-500'}`} 
-                             style={{ width: `${subMastery || 5}%` }} 
-                           />
-                        </div>
-                     </div>
-
-                     <div className="pt-6 border-t border-slate-50 flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                           <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 border border-slate-200 shadow-inner">
-                              <ShieldCheck size={18} />
-                           </div>
-                           <div>
-                              <p className="text-[9px] font-black text-slate-300 uppercase tracking-widest leading-none mb-1">Subject Mentor</p>
-                              <p className="text-[12px] font-black text-slate-800 uppercase italic leading-none">{en.teacherName || "Faculty Expert"}</p>
-                           </div>
-                        </div>
-                        <button className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center text-slate-300 group-hover:bg-indigo-600 group-hover:text-white transition-all border border-slate-100 hover:border-indigo-600 active:scale-95">
-                           <ArrowRight size={18} />
-                        </button>
-                     </div>
-                  </div>
-                );
-             })
-           ) : (
-             <div className="col-span-full py-20 text-center flex flex-col items-center justify-center bg-slate-50 rounded-[3rem] border border-dashed border-slate-200">
-                <Users className="w-12 h-12 text-slate-200 mb-4" />
-                <p className="text-sm font-black uppercase tracking-[0.2em] text-slate-300 italic">No subject streams detected in this registry node.</p>
-             </div>
-           )}
-        </div>
-      </div>
     </div>
   );
 };
