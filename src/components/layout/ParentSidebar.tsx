@@ -3,7 +3,7 @@ import { useAuth } from "../../lib/AuthContext";
 import {
   Home, User, TrendingUp, CalendarCheck, ClipboardList,
   FileText, Brain, SmilePlus, StickyNote,
-  Bell, Settings, GraduationCap, LogOut, CreditCard, CalendarDays
+  Bell, Settings, GraduationCap, LogOut, CreditCard, CalendarDays, School
 } from "lucide-react";
 
 const navItems = [
@@ -18,6 +18,7 @@ const navItems = [
   { title: "Concept Strengths", path: "/concepts", icon: Brain },
   { title: "Behaviour", path: "/behaviour", icon: SmilePlus },
   { title: "Teacher Notes", path: "/teacher-notes", icon: StickyNote },
+  { title: "Principal Notes", path: "/principal-notes", icon: School },
   { title: "Fee Status", path: "/fees", icon: CreditCard },
   { title: "Reports", path: "/reports", icon: FileText },
   { title: "Alerts", path: "/alerts", icon: Bell, badge: 3 },

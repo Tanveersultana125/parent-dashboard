@@ -12,6 +12,7 @@ import TestsPage from "./pages/TestsPage";
 import ConceptStrengthsPage from "./pages/ConceptStrengthsPage";
 import BehaviourPage from "./pages/BehaviourPage";
 import TeacherNotesPage from "./pages/TeacherNotesPage";
+import PrincipalNotesPage from "./pages/PrincipalNotesPage";
 import AlertsPage from "./pages/AlertsPage";
 import SettingsPage from "./pages/SettingsPage";
 import ReportsPage from "./pages/ReportsPage";
@@ -60,6 +61,7 @@ const AppRoutes = () => {
         <Route path="/concepts" element={<ConceptStrengthsPage />} />
         <Route path="/behaviour" element={<BehaviourPage />} />
         <Route path="/teacher-notes" element={<TeacherNotesPage />} />
+        <Route path="/principal-notes" element={<PrincipalNotesPage />} />
         <Route path="/reports" element={<ReportsPage />} />
         <Route path="/alerts" element={<AlertsPage />} />
         <Route path="/fees" element={<FeesPage />} />

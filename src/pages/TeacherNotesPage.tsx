@@ -1,96 +1,106 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import {
-  MessageSquare, Search, CheckCircle2, MoreVertical, Send, User, Paperclip, Smile, ChevronLeft, Clock, Phone, Video, Check, CheckCheck, GraduationCap, Mic, Loader2, Sparkles, Bot, Plus, X
+  Loader2, Send, CheckCheck, MessageSquare, Mail, Search, Smile,
+  ChevronLeft, GraduationCap, Plus, X, Star
 } from "lucide-react";
 import { db } from "../lib/firebase";
-import { collection, query, where, onSnapshot, addDoc, serverTimestamp, getDocs, writeBatch } from "firebase/firestore";
+import {
+  collection, query, where, onSnapshot, addDoc, serverTimestamp, getDocs,
+  updateDoc, doc
+} from "firebase/firestore";
 import { useAuth } from "../lib/AuthContext";
 import { toast } from "sonner";
-import { ParentAIController } from "../ai/controller/ai-controller";
 import { useLocation } from "react-router-dom";
 
 const TeacherNotesPage = () => {
   const { studentData } = useAuth();
   const location = useLocation();
-  const [selectedTeacher, setSelectedTeacher] = useState<any>(null);
-  const [allNotes, setAllNotes] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [messageContent, setMessageContent] = useState("");
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [showNewChat, setShowNewChat] = useState(false);
+  const [selectedTeacher, setSelectedTeacher]     = useState<any>(null);
+  const [allNotes, setAllNotes]                   = useState<any[]>([]);
+  const [loading, setLoading]                     = useState(true);
+  const [searchQuery, setSearchQuery]             = useState("");
+  const [messageContent, setMessageContent]       = useState("");
+  const [showNewChat, setShowNewChat]             = useState(false);
   const [availableTeachers, setAvailableTeachers] = useState<any[]>([]);
+
+  // Rate Teacher state
+  const [showRateModal, setShowRateModal]           = useState(false);
+  const [ratingValue, setRatingValue]               = useState(0);
+  const [hoverRating, setHoverRating]               = useState(0);
+  const [reviewText, setReviewText]                 = useState("");
+  const [isSubmittingReview, setIsSubmittingReview] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
+  // Fetch all parent_notes for this student (multi-stream)
   useEffect(() => {
     if (!studentData?.id) return;
     setLoading(true);
     const sEmail = studentData.email?.toLowerCase() || "";
-    const sId = studentData.id;
+    const sId    = studentData.id;
 
-    // 1. Multi-Stream Universal Discourse Fetch
-    const processNotes = (snapArray: any[]) => {
-        const combined = snapArray.flatMap(snap => snap.docs.map(d => ({ id: d.id, ...d.data() })));
-        const seenIds = new Set();
-        const data = combined.filter(d => { 
-           if(!seenIds.has(d.id)) { seenIds.add(d.id); return true; } 
-           return false; 
-        }).map(d => ({ 
-           ...d, 
-           createdAt: d.createdAt || d.timestamp || serverTimestamp() 
-        }));
-        data.sort((a:any, b:any) => (a.createdAt?.toMillis?.() || a.createdAt?.toSeconds?.() * 1000 || 0) - (b.createdAt?.toMillis?.() || b.createdAt?.toSeconds?.() * 1000 || 0));
-        setAllNotes(data);
-        setLoading(false);
+    const process = (snapArray: any[]) => {
+      const combined = snapArray.flatMap(s =>
+        (s?.docs || []).map((d: any) => ({ id: d.id, ...d.data() }))
+      );
+      const seen = new Set<string>();
+      const data = combined.filter(d => { if (seen.has(d.id)) return false; seen.add(d.id); return true; });
+      data.sort((a: any, b: any) => (a.createdAt?.toMillis?.() || 0) - (b.createdAt?.toMillis?.() || 0));
+      setAllNotes(data);
+      setLoading(false);
     };
 
-    let s1:any=[], s2:any=[], s3:any=[];
-    const unsub1 = onSnapshot(query(collection(db, "parent_notes"), where("studentId", "==", sId)), (snap) => { s1=snap; processNotes([s1,s2,s3]); });
-    const unsub2 = onSnapshot(query(collection(db, "parent_notes"), where("studentEmail", "==", sEmail)), (snap) => { s2=snap; processNotes([s1,s2,s3]); });
-    const unsub3 = onSnapshot(query(collection(db, "performance_feedback"), where("studentId", "==", sId)), (snap) => { s3=snap; processNotes([s1,s2,s3]); });
-
-    return () => { unsub1(); unsub2(); unsub3(); };
+    let s1: any = [], s2: any = [];
+    const u1 = onSnapshot(query(collection(db, "parent_notes"), where("studentId",    "==", sId)),    snap => { s1 = snap; process([s1, s2]); });
+    const u2 = onSnapshot(query(collection(db, "parent_notes"), where("studentEmail", "==", sEmail)), snap => { s2 = snap; process([s1, s2]); });
+    return () => { u1(); u2(); };
   }, [studentData?.id]);
 
-  // Fetch teachers for "New Conversation"
+  // Fetch available teachers for "New Message"
   useEffect(() => {
-    if (!studentData?.id && !studentData?.classId) return;
+    if (!studentData?.classId) return;
     const fetchTeachers = async () => {
       try {
-        const classId = studentData.classId;
-        if (!classId) return;
-        const snap = await getDocs(query(collection(db, "teaching_assignments"), where("classId", "==", classId)));
-        if (snap.empty) return;
-        const teacherIds = snap.docs.map(d => d.data().teacherId).filter(Boolean);
-        if (teacherIds.length === 0) return;
-        const tSnap = await getDocs(query(collection(db, "teachers"), where("__name__", "in", teacherIds.slice(0, 10))));
+        const snap = await getDocs(query(collection(db, "teaching_assignments"), where("classId", "==", studentData.classId)));
+        const ids  = snap.docs.map(d => d.data().teacherId).filter(Boolean);
+        if (!ids.length) return;
+        const tSnap = await getDocs(query(collection(db, "teachers"), where("__name__", "in", ids.slice(0, 10))));
         setAvailableTeachers(tSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-      } catch { /* silently fail */ }
+      } catch { /* silent */ }
     };
     fetchTeachers();
-  }, [studentData?.id, studentData?.classId]);
+  }, [studentData?.classId]);
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [allNotes, selectedTeacher]);
 
+  // Mark unread teacher messages as read when conversation is opened
+  useEffect(() => {
+    if (!selectedTeacher) return;
+    allNotes.forEach(n => {
+      if (n.teacherId === selectedTeacher.teacherId && n.from === "teacher" && n.read !== true) {
+        updateDoc(doc(db, "parent_notes", n.id), { read: true }).catch(() => {});
+      }
+    });
+  }, [selectedTeacher?.teacherId]);
+
+  // Build teacher conversation list
   const teacherConversations = useMemo(() => {
-    const map = new Map();
+    const map = new Map<string, any>();
     [...allNotes].reverse().forEach(n => {
-      const tId = n.teacherId;
-      if (tId && !map.has(tId)) {
-        map.set(tId, {
-          teacherId: tId,
-          teacherName: n.teacherName || "Faculty Member",
-          subject: n.subject || "Academic Registry",
-          lastMessage: n
+      if (n.teacherId && !map.has(n.teacherId)) {
+        map.set(n.teacherId, {
+          teacherId:   n.teacherId,
+          teacherName: n.teacherName || "Teacher",
+          subject:     n.subject     || "",
+          lastMessage: n,
         });
       }
     });
-    return Array.from(map.values()).filter(t => 
-      t.teacherName?.toLowerCase().includes(searchQuery.toLowerCase()) || 
-      t.subject?.toLowerCase().includes(searchQuery.toLowerCase())
-    ).sort((a, b) => (b.lastMessage.createdAt?.toMillis?.() || 0) - (a.lastMessage.createdAt?.toMillis?.() || 0));
+    return Array.from(map.values())
+      .filter(t => t.teacherName.toLowerCase().includes(searchQuery.toLowerCase()))
+      .sort((a, b) => (b.lastMessage.createdAt?.toMillis?.() || 0) - (a.lastMessage.createdAt?.toMillis?.() || 0));
   }, [allNotes, searchQuery]);
 
+  // Auto-select teacher from navigation state
   useEffect(() => {
     if (location.state?.teacherId && teacherConversations.length > 0) {
       const match = teacherConversations.find(t => t.teacherId === location.state.teacherId);
@@ -98,197 +108,381 @@ const TeacherNotesPage = () => {
     }
   }, [location.state, teacherConversations]);
 
-  const chatMessages = useMemo(() => 
+  const unreadCounts = useMemo(() => {
+    const map = new Map<string, number>();
+    allNotes.forEach(n => {
+      if (n.from === "teacher" && n.teacherId && n.read !== true) {
+        map.set(n.teacherId, (map.get(n.teacherId) || 0) + 1);
+      }
+    });
+    return map;
+  }, [allNotes]);
+
+  const chatMessages = useMemo(() =>
     selectedTeacher ? allNotes.filter(n => n.teacherId === selectedTeacher.teacherId) : []
   , [allNotes, selectedTeacher]);
 
-  const handleSendMessage = async () => {
+  const stats = useMemo(() => ({
+    total:    allNotes.length,
+    teachers: teacherConversations.length,
+    unread:   allNotes.filter(n => n.from === "teacher").length,
+  }), [allNotes, teacherConversations]);
+
+  const handleSend = async () => {
     if (!selectedTeacher || !messageContent.trim()) return;
     const content = messageContent.trim();
     setMessageContent("");
     try {
       await addDoc(collection(db, "parent_notes"), {
-        teacherId: selectedTeacher.teacherId,
+        teacherId:   selectedTeacher.teacherId,
         teacherName: selectedTeacher.teacherName,
-        studentId: studentData.id,
-        studentEmail: studentData.email?.toLowerCase() || "",
-        studentName: studentData.name,
-        parentName: `Parent of ${studentData.name}`,
-        subject: selectedTeacher.subject,
-        content,
-        status: "Sent",
-        from: "parent",
-        createdAt: serverTimestamp()
+        studentId:   studentData?.id   || "",
+        studentEmail: studentData?.email?.toLowerCase() || "",
+        studentName: studentData?.name || "",
+        parentName:  `Parent of ${studentData?.name || "Student"}`,
+        subject:     selectedTeacher.subject || "",
+        content, from: "parent", status: "Sent",
+        createdAt: serverTimestamp(),
       });
-    } catch (e) { toast.error("Sync failure."); setMessageContent(content); }
+    } catch { toast.error("Failed to send."); setMessageContent(content); }
   };
 
-  const generateAI = async () => {
-    if (!selectedTeacher) return;
-    setIsGenerating(true);
+  const handleSubmitReview = async () => {
+    if (!selectedTeacher || ratingValue === 0) return;
+    setIsSubmittingReview(true);
     try {
-      const result = await ParentAIController.getParentReplyDraft({ scholar_name: studentData.name, context: messageContent || "General Scholastic Discussion" });
-      if (result.status === "success" && result.data?.draft) setMessageContent(result.data.draft);
-    } catch (e) { toast.error("AI Busy."); } finally { setIsGenerating(false); }
+      await addDoc(collection(db, "teacher_reviews"), {
+        teacherId:   selectedTeacher.teacherId,
+        teacherName: selectedTeacher.teacherName,
+        studentId:   studentData?.id   || "",
+        studentName: studentData?.name || "",
+        parentName:  `Parent of ${studentData?.name || "Student"}`,
+        schoolId:    studentData?.schoolId || "",
+        branchId:    studentData?.branchId || "",
+        rating: ratingValue, review: reviewText.trim(),
+        createdAt: serverTimestamp(),
+      });
+      toast.success("Review submitted!");
+      setShowRateModal(false); setRatingValue(0); setReviewText("");
+    } catch { toast.error("Failed to submit review."); }
+    finally { setIsSubmittingReview(false); }
   };
 
-  const stats = useMemo(() => {
-    const total = allNotes.length;
-    let pending = 0, resolved = 0;
-    const threads = new Map();
-    allNotes.forEach(n => threads.set(n.teacherId, n.from));
-    threads.forEach(from => from === 'teacher' ? pending++ : resolved++);
-    return { total, pending, resolved };
-  }, [allNotes]);
+  const fmtTime = (ts: any) =>
+    new Date(ts?.toDate?.() || Date.now()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+  const fmtDate = (ts: any) => {
+    const d     = ts?.toDate?.() || new Date();
+    const today = new Date();
+    if (d.toDateString() === today.toDateString()) return "Today";
+    const y = new Date(today); y.setDate(today.getDate() - 1);
+    if (d.toDateString() === y.toDateString()) return "Yesterday";
+    return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+  };
+
+  const groupedMessages = useMemo(() => {
+    const groups: { date: string; messages: any[] }[] = [];
+    chatMessages.forEach(msg => {
+      const label = fmtDate(msg.createdAt);
+      const last  = groups[groups.length - 1];
+      if (last && last.date === label) last.messages.push(msg);
+      else groups.push({ date: label, messages: [msg] });
+    });
+    return groups;
+  }, [chatMessages]);
 
   return (
-    <div className="h-full flex flex-col font-sans text-left -mt-6">
-      <div className="bg-[#00a884] rounded-[3.5rem] p-16 mb-10 shadow-2xl relative overflow-hidden group">
-         <div className="absolute top-0 right-0 p-16 opacity-10 scale-150 rotate-12 transition-all group-hover:rotate-45 duration-1000"><GraduationCap size={240} className="text-white"/></div>
-         <div className="relative z-10">
-            <h1 className="text-6xl font-black text-white tracking-tighter uppercase italic leading-none mb-4">Faculty Liaison</h1>
-            <p className="text-xl font-bold text-teal-50 max-w-xl">Verified, real-time academic discourse between <span className="text-white underline">Guardians</span> and <span className="text-white underline">Educators</span>.</p>
-         </div>
-      </div>
+    <div className="h-screen flex flex-col -mt-6" style={{ fontFamily: "'Montserrat', sans-serif" }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800;900&display=swap');
+        .wa-scroll::-webkit-scrollbar { width: 6px; }
+        .wa-scroll::-webkit-scrollbar-thumb { background: #c8b89a; border-radius: 4px; }
+        .wa-input::-webkit-scrollbar { display: none; }
+        .no-sb::-webkit-scrollbar { display: none; }
+        .bubble-sent { border-radius: 8px 0 8px 8px; position: relative; }
+        .bubble-sent::before { content:''; position:absolute; top:0; right:-8px; width:0; height:0; border:8px solid transparent; border-top-color:#00a884; border-right:0; }
+        .bubble-recv { border-radius: 0 8px 8px 8px; position: relative; }
+        .bubble-recv::before { content:''; position:absolute; top:0; left:-8px; width:0; height:0; border:8px solid transparent; border-top-color:#ffffff; border-left:0; }
+        .wa-bg { background-color:#efeae2; }
+      `}</style>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-10 px-4">
-         {[
-            { label: "Submissions Hub", key: "total", icon: MessageSquare, color: "bg-teal-50 text-teal-600" },
-            { label: "Action Required", key: "pending", icon: Clock, color: "bg-amber-50 text-amber-600" },
-            { label: "Archive Trace", key: "resolved", icon: CheckCircle2, color: "bg-emerald-50 text-emerald-600" },
-         ].map(s => (
-            <div key={s.key} className="bg-white p-10 rounded-[3rem] border border-slate-100 flex items-center justify-between shadow-sm hover:shadow-2xl transition-all">
-               <div><p className="text-[11px] font-black text-slate-300 uppercase tracking-widest mb-2">{s.label}</p><h4 className="text-5xl font-black text-slate-900">{stats[s.key as keyof typeof stats]}</h4></div>
-               <div className={`w-20 h-20 rounded-[2.5rem] flex items-center justify-center ${s.color}`}><s.icon className="w-10 h-10" /></div>
+      {/* Stat strip */}
+      <div className="flex gap-3 px-4 py-3 bg-white border-b border-gray-200 shrink-0">
+        {[
+          { label: "Total Messages", val: stats.total,    icon: MessageSquare, color: "text-teal-500" },
+          { label: "Teacher Msgs",   val: stats.unread,   icon: Mail,          color: "text-amber-500" },
+          { label: "Teachers",       val: stats.teachers, icon: GraduationCap, color: "text-blue-500" },
+        ].map(s => (
+          <div key={s.label} className="flex items-center gap-3 bg-gray-50 rounded-xl px-4 py-3 flex-1 border border-gray-100">
+            <s.icon className={`w-5 h-5 ${s.color} shrink-0`} />
+            <div>
+              <p className="text-xs font-semibold text-gray-400">{s.label}</p>
+              <p className="text-xl font-black text-gray-800">{s.val}</p>
             </div>
-         ))}
+          </div>
+        ))}
       </div>
 
-      <div className="flex-1 flex bg-white border border-slate-200 rounded-[4rem] shadow-2xl overflow-hidden mb-8 relative min-h-[600px]">
-        <div className={`w-full md:w-[460px] border-r border-slate-100 flex flex-col bg-slate-50/20 ${selectedTeacher ? 'hidden md:flex' : 'flex'}`}>
-          <div className="p-10">
-             <div className="relative group">
-                <input type="text" placeholder="Filter educators..." value={searchQuery} onChange={(e)=>setSearchQuery(e.target.value)} className="w-full pl-16 pr-8 h-16 bg-white border border-slate-100 rounded-[2rem] text-sm font-black focus:ring-4 focus:ring-emerald-500/10 transition-all uppercase tracking-widest placeholder:text-slate-200" />
-                <Search className="w-6 h-6 text-slate-300 absolute left-6 top-1/2 -translate-y-1/2" />
-             </div>
-             <button onClick={() => setShowNewChat(true)} className="mt-4 w-full flex items-center justify-center gap-3 h-14 bg-[#00a884] text-white rounded-[2rem] text-sm font-black uppercase tracking-widest hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-500/20">
-               <Plus className="w-5 h-5" /> New Message
-             </button>
+      {/* Main layout */}
+      <div className="flex flex-1 overflow-hidden">
+
+        {/* Left sidebar */}
+        <div className={`w-[360px] shrink-0 flex flex-col border-r border-gray-200 bg-white ${selectedTeacher ? "hidden md:flex" : "flex"}`}>
+          {/* Header */}
+          <div className="flex items-center gap-2 px-4 py-3 bg-[#00a884] shrink-0">
+            <GraduationCap className="w-5 h-5 text-white" />
+            <p className="text-white font-bold text-sm flex-1">Teacher Messages</p>
           </div>
 
-          {/* New Conversation Modal */}
+          {/* Search + New */}
+          <div className="px-3 py-2 bg-[#f0f2f5] shrink-0 flex flex-col gap-2">
+            <div className="flex items-center gap-2 bg-white rounded-full px-4 py-2">
+              <Search className="w-4 h-4 text-gray-400 shrink-0" />
+              <input
+                type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+                placeholder="Search teachers..."
+                className="flex-1 bg-transparent text-sm outline-none text-gray-700 placeholder:text-gray-400"
+                style={{ fontFamily: "'Montserrat', sans-serif" }}
+              />
+            </div>
+            <button
+              onClick={() => setShowNewChat(true)}
+              className="w-full flex items-center justify-center gap-2 py-2 bg-[#00a884] text-white rounded-full text-sm font-semibold hover:bg-emerald-600 transition-colors"
+            >
+              <Plus className="w-4 h-4" /> New Message
+            </button>
+          </div>
+
+          {/* New chat modal overlay */}
           {showNewChat && (
-            <div className="absolute inset-0 bg-white z-50 flex flex-col rounded-l-[4rem] overflow-hidden">
-              <div className="p-10 border-b border-slate-100 flex items-center justify-between">
-                <h3 className="text-xl font-black text-slate-900 uppercase tracking-tighter">Select Teacher</h3>
-                <button onClick={() => setShowNewChat(false)} className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center hover:bg-slate-200 transition-all"><X className="w-5 h-5" /></button>
+            <div className="absolute inset-y-0 left-0 w-[360px] bg-white z-50 flex flex-col border-r border-gray-200">
+              <div className="flex items-center gap-3 px-4 py-3 bg-[#00a884]">
+                <button onClick={() => setShowNewChat(false)} className="text-white">
+                  <ChevronLeft className="w-5 h-5" />
+                </button>
+                <p className="text-white font-bold text-sm">Select Teacher</p>
               </div>
-              <div className="flex-1 overflow-y-auto p-6">
+              <div className="flex-1 overflow-y-auto no-sb">
                 {availableTeachers.length === 0 ? (
-                  <div className="text-center py-16 text-slate-300 font-black uppercase text-xs tracking-widest">No class teachers found</div>
-                ) : (
-                  availableTeachers.map(t => (
-                    <button key={t.id} onClick={() => {
-                      setSelectedTeacher({ teacherId: t.id, teacherName: t.name, subject: t.subject || "General" });
-                      setShowNewChat(false);
-                    }} className="w-full flex items-center gap-6 p-6 rounded-[2rem] hover:bg-slate-50 transition-all border border-slate-50 mb-3">
-                      <div className="w-16 h-16 rounded-[2rem] bg-slate-100 flex items-center justify-center text-xl font-black text-slate-400">{t.name?.substring(0,2).toUpperCase()}</div>
-                      <div className="text-left">
-                        <p className="font-black text-slate-800 uppercase tracking-tight">{t.name}</p>
-                        <p className="text-xs text-emerald-600 font-black uppercase tracking-widest">{t.subject || "Teacher"}</p>
-                      </div>
-                    </button>
-                  ))
-                )}
+                  <p className="text-center text-xs text-gray-400 py-12 font-semibold">No class teachers found</p>
+                ) : availableTeachers.map(t => (
+                  <button key={t.id} onClick={() => {
+                    setSelectedTeacher({ teacherId: t.id, teacherName: t.name, subject: t.subject || "General" });
+                    setShowNewChat(false);
+                  }} className="w-full flex items-center gap-3 px-4 py-3 border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                    <div className="w-12 h-12 rounded-full bg-[#00a884] flex items-center justify-center text-white text-sm font-bold shrink-0">
+                      {t.name?.substring(0, 2).toUpperCase()}
+                    </div>
+                    <div className="text-left">
+                      <p className="text-sm font-semibold text-gray-900">{t.name}</p>
+                      <p className="text-xs text-teal-600">{t.subject || "Teacher"}</p>
+                    </div>
+                  </button>
+                ))}
               </div>
             </div>
           )}
-          <div className="flex-1 overflow-y-auto custom-scrollbar px-4 pb-10">
-             {loading ? <div className="p-20 text-center animate-pulse"><Loader2 size={40} className="animate-spin mx-auto text-slate-100" /></div> :
-                teacherConversations.map(t => {
-                   const active = selectedTeacher?.teacherId === t.teacherId;
-                   return (
-                     <button key={t.teacherId} onClick={()=>setSelectedTeacher(t)} className={`w-full p-10 flex items-center gap-8 border-b border-slate-50 transition-all rounded-[3rem] mb-4 ${active ? 'bg-white shadow-[0_30px_60px_-15px_rgba(0,0,0,0.1)] z-20 translate-x-2 border-emerald-100 ring-2 ring-emerald-50' : 'hover:bg-white/50'}`}>
-                        <div className={`w-20 h-20 rounded-[2.2rem] flex items-center justify-center text-xl font-black shadow-inner transition-all ${active ? 'bg-[#00a884] text-white rotate-2' : 'bg-slate-100 text-slate-300'}`}>{t.teacherName?.substring(0,2).toUpperCase()}</div>
-                        <div className="flex-1 text-left truncate">
-                           <div className="flex justify-between items-center mb-1"><h4 className="text-xl font-black text-slate-900 truncate uppercase tracking-tighter italic leading-none">{t.teacherName}</h4><span className="text-[10px] font-black text-slate-300 uppercase">{new Date(t.lastMessage.createdAt?.toDate?.() || Date.now()).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</span></div>
-                           <p className="text-[11px] text-emerald-600 font-black uppercase tracking-widest mb-2 italic">{t.subject}</p>
-                           <p className={`text-[13px] truncate ${active ? 'text-emerald-800 font-black' : 'text-slate-400 font-bold'}`}>{t.lastMessage.from === 'parent' ? '✓ ' : ''}{t.lastMessage.content}</p>
-                        </div>
-                     </button>
-                   );
-                })}
+
+          {/* Conversation list */}
+          <div className="flex-1 overflow-y-auto no-sb">
+            {loading ? (
+              <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-gray-300" /></div>
+            ) : teacherConversations.length === 0 ? (
+              <p className="text-center text-xs text-gray-400 py-12 font-semibold px-4">No conversations yet. Tap "New Message" to start.</p>
+            ) : teacherConversations.map(t => {
+              const unread = unreadCounts.get(t.teacherId) || 0;
+              const active = selectedTeacher?.teacherId === t.teacherId;
+              return (
+                <button key={t.teacherId} onClick={() => setSelectedTeacher(t)}
+                  className={`w-full flex items-center gap-3 px-4 py-3 border-b border-gray-100 hover:bg-gray-50 transition-colors ${active ? "bg-[#f0f2f5]" : ""}`}>
+                  <div className="w-12 h-12 rounded-full bg-[#00a884] flex items-center justify-center text-white text-sm font-bold shrink-0">
+                    {t.teacherName?.substring(0, 2).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0 text-left">
+                    <div className="flex justify-between items-center">
+                      <p className="text-sm font-semibold text-gray-900 truncate">{t.teacherName}</p>
+                      <span className="text-[11px] text-gray-400 shrink-0 ml-2">{fmtTime(t.lastMessage.createdAt)}</span>
+                    </div>
+                    <div className="flex justify-between items-center mt-0.5">
+                      <p className="text-xs text-gray-500 truncate">
+                        {t.lastMessage.from === "parent" ? "✓ " : ""}{t.lastMessage.content}
+                      </p>
+                      {unread > 0 && (
+                        <span className="ml-2 min-w-[20px] h-5 rounded-full bg-[#25d366] text-white text-[10px] font-bold flex items-center justify-center px-1 shrink-0">
+                          {unread}
+                        </span>
+                      )}
+                    </div>
+                    {t.subject && <p className="text-[11px] text-teal-600 mt-0.5">{t.subject}</p>}
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </div>
 
-        <div className={`flex-1 flex flex-col ${!selectedTeacher ? 'hidden md:flex' : 'flex'} relative bg-[#fdfdfd]`}>
+        {/* Right — chat panel */}
+        <div className={`flex-1 flex flex-col overflow-hidden ${!selectedTeacher ? "hidden md:flex" : "flex"}`}>
           {selectedTeacher ? (
             <>
-              <div className="px-12 py-8 bg-[#f0f2f5] border-b border-slate-200 flex justify-between items-center z-20 shadow-sm">
-                 <div className="flex items-center gap-8">
-                    <button onClick={()=>setSelectedTeacher(null)} className="md:hidden p-3 hover:bg-slate-200 rounded-full"><ChevronLeft size={32}/></button>
-                    <div className="w-16 h-16 rounded-[2rem] bg-emerald-100 flex items-center justify-center p-0.5 border-4 border-white shadow-xl overflow-hidden text-[#00a884]"><User size={32}/></div>
-                    <div>
-                       <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tighter italic leading-none mb-1">{selectedTeacher.teacherName}</h3>
-                       <p className="text-[10px] font-black text-emerald-500 uppercase tracking-[0.3em] flex items-center gap-2 animate-pulse"><span className="w-2.5 h-2.5 rounded-full bg-emerald-500" /> Secure Protocol Active</p>
-                    </div>
-                 </div>
-                 <div className="flex items-center gap-4">
-                    <button className="h-16 w-16 bg-white flex items-center justify-center text-slate-400 hover:text-[#00a884] rounded-2xl shadow-sm transition-all"><Video size={28}/></button>
-                    <button className="h-16 w-16 bg-white flex items-center justify-center text-slate-400 hover:text-[#00a884] rounded-2xl shadow-sm transition-all"><Phone size={24}/></button>
-                    <div className="w-px h-10 bg-slate-300 mx-3" />
-                    <button className="h-16 w-16 bg-white flex items-center justify-center text-slate-300 hover:text-slate-900 rounded-2xl transition-all"><MoreVertical size={28}/></button>
-                 </div>
+              {/* Chat header */}
+              <div className="flex items-center gap-3 px-4 py-2 bg-[#00a884] shrink-0">
+                <button onClick={() => setSelectedTeacher(null)} className="md:hidden p-1 text-white">
+                  <ChevronLeft className="w-5 h-5" />
+                </button>
+                <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center text-white text-sm font-bold shrink-0">
+                  {selectedTeacher.teacherName?.substring(0, 2).toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-white font-semibold text-sm leading-none">{selectedTeacher.teacherName}</p>
+                  <p className="text-teal-100 text-xs mt-0.5 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse inline-block" />
+                    {selectedTeacher.subject || "Teacher"}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowRateModal(true)}
+                  className="flex items-center gap-1 bg-white/20 hover:bg-white/30 transition-colors px-3 py-1.5 rounded-full text-white text-xs font-semibold"
+                >
+                  <Star className="w-3.5 h-3.5 fill-white" /> Rate
+                </button>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-12 space-y-8 custom-scrollbar flex flex-col z-10 bg-white/40">
-                 {chatMessages.map((n, i) => {
-                    const isM = n.from === "parent";
-                    return (
-                      <div key={n.id} className={`flex flex-col ${isM ? 'items-end' : 'items-start'} animate-in slide-in-from-bottom-6 duration-500`}>
-                         <div className={`relative px-10 py-6 rounded-[2.5rem] text-[16px] shadow-sm font-bold max-w-[85%] ${isM ? 'bg-[#d9fdd3] text-slate-800 rounded-tr-none' : 'bg-white text-slate-800 rounded-tl-none border border-slate-100'}`}>
-                            <p className="whitespace-pre-wrap leading-relaxed">{n.content}</p>
-                            <div className="mt-4 flex items-center justify-end gap-2 opacity-50 text-[10px] font-black uppercase tracking-widest text-slate-400">
-                               {new Date(n.createdAt?.toDate?.() || Date.now()).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}
-                               {isM && <CheckCheck className="w-5 h-5 text-blue-500 ml-1" />}
+              {/* Messages */}
+              <div className="flex-1 overflow-y-auto wa-scroll wa-bg px-4 py-4 flex flex-col gap-1">
+                {groupedMessages.length === 0 ? (
+                  <div className="flex-1 flex items-center justify-center">
+                    <div className="bg-white/80 rounded-lg px-8 py-6 shadow-sm text-center">
+                      <GraduationCap className="w-10 h-10 text-gray-200 mx-auto mb-3" />
+                      <p className="text-sm font-semibold text-gray-500">No messages yet</p>
+                      <p className="text-xs text-gray-400 mt-1">Start the conversation with the teacher</p>
+                    </div>
+                  </div>
+                ) : groupedMessages.map(group => (
+                  <div key={group.date}>
+                    <div className="flex justify-center my-3">
+                      <span className="bg-white/90 text-gray-500 text-[11px] font-medium px-3 py-1 rounded-full shadow-sm">{group.date}</span>
+                    </div>
+                    {group.messages.map(n => {
+                      const isParent = n.from === "parent";
+                      return (
+                        <div key={n.id} className={`flex mb-1 ${isParent ? "justify-end" : "justify-start"}`}>
+                          {!isParent && (
+                            <div className="w-7 h-7 rounded-full bg-[#00a884] flex items-center justify-center text-white text-[10px] font-bold mr-1 mt-1 shrink-0">
+                              {selectedTeacher.teacherName?.substring(0, 1).toUpperCase()}
                             </div>
-                         </div>
-                      </div>
-                    );
-                 })}
-                 <div ref={chatEndRef} />
+                          )}
+                          <div className={`max-w-[70%] px-3 py-2 shadow-sm ${isParent ? "bubble-sent text-white" : "bubble-recv bg-white"}`}
+                            style={isParent ? { backgroundColor: "#00a884" } : {}}>
+                            {!isParent && (
+                              <p className="text-[11px] font-semibold text-[#00a884] mb-1">{selectedTeacher.teacherName}</p>
+                            )}
+                            <p className={`text-sm whitespace-pre-wrap leading-relaxed ${isParent ? "text-white" : "text-gray-800"}`}>{n.content}</p>
+                            <div className="flex items-center justify-end gap-1 mt-1">
+                              <span className={`text-[11px] ${isParent ? "text-teal-100" : "text-gray-400"}`}>{fmtTime(n.createdAt)}</span>
+                              {isParent && <CheckCheck className="w-4 h-4 text-white/70" />}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+                <div ref={chatEndRef} />
               </div>
 
-              <div className="p-10 bg-[#f0f2f5] border-t border-slate-100 z-20">
-                 <div className="flex items-center gap-6 bg-white p-4 rounded-[3.5rem] border border-slate-100 shadow-2xl">
-                    <button className="h-16 w-16 bg-slate-50 text-slate-300 hover:text-[#00a884] rounded-full flex items-center justify-center transition-all shrink-0 shadow-inner"><Smile size={32}/></button>
-                    <div className="flex-1 bg-slate-50/50 rounded-[2.5rem] flex items-center pr-6 overflow-hidden border border-slate-50 shadow-inner">
-                       <textarea rows={1} value={messageContent} onChange={(e)=>setMessageContent(e.target.value)} onKeyDown={(e)=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();handleSendMessage();}}} placeholder="Compose scholarly response..." className="flex-1 bg-transparent border-none focus:ring-0 px-8 py-5 text-sm font-black resize-none no-scrollbar min-h-[60px]" />
-                       <button onClick={generateAI} disabled={isGenerating} className="h-12 w-12 flex items-center justify-center text-teal-600 hover:bg-teal-50 rounded-2xl transition-all shrink-0">{isGenerating ? <Loader2 className="animate-spin" size={24}/> : <Sparkles size={28}/>}</button>
-                    </div>
-                    <button onClick={handleSendMessage} disabled={!messageContent.trim()} className={`h-20 w-20 rounded-full flex items-center justify-center transition-all active:scale-90 shadow-2xl shrink-0 ${messageContent.trim() ? 'bg-[#00a884] text-white shadow-[#00a884]/40' : 'bg-slate-200 text-slate-400'}`}><Send size={32}/></button>
-                 </div>
+              {/* Input */}
+              <div className="flex items-center gap-2 px-3 py-2 bg-[#f0f2f5] shrink-0">
+                <button className="w-10 h-10 flex items-center justify-center text-gray-500 hover:bg-gray-200 rounded-full transition-colors">
+                  <Smile className="w-6 h-6" />
+                </button>
+                <div className="flex-1 bg-white rounded-full px-4 py-2 flex items-center min-h-[42px]">
+                  <textarea
+                    rows={1} value={messageContent}
+                    onChange={e => setMessageContent(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+                    placeholder="Message teacher..."
+                    className="flex-1 bg-transparent border-none focus:ring-0 text-sm text-gray-800 resize-none wa-input outline-none placeholder:text-gray-400 leading-relaxed"
+                    style={{ fontFamily: "'Montserrat', sans-serif" }}
+                  />
+                </div>
+                <button
+                  onClick={handleSend}
+                  disabled={!messageContent.trim()}
+                  className={`w-10 h-10 rounded-full flex items-center justify-center transition-all shrink-0 ${messageContent.trim() ? "text-white" : "bg-gray-300 text-gray-400"}`}
+                  style={messageContent.trim() ? { backgroundColor: "#00a884" } : {}}
+                >
+                  <Send className="w-5 h-5" />
+                </button>
               </div>
             </>
           ) : (
-            <div className="flex-1 flex flex-col items-center justify-center p-24 text-center relative z-10 glass-mesh">
-               <div className="w-56 h-56 bg-white rounded-full shadow-[0_60px_120px_-20px_rgba(0,168,132,0.2)] flex items-center justify-center mb-16 border-8 border-slate-50 group hover:rotate-12 transition-all duration-700">
-                  <GraduationCap className="w-20 h-20 text-slate-100 group-hover:text-[#00a884] transition-colors" />
-               </div>
-               <h2 className="text-6xl font-black text-slate-900 mb-6 uppercase tracking-tighter italic">Educator Liaison</h2>
-               <p className="text-[13px] font-black text-slate-300 max-w-sm uppercase tracking-[0.4em] leading-relaxed">Select a faculty member to initiate a verified scholastic discourse node.</p>
-               <div className="absolute bottom-20 text-[11px] font-black text-[#00a884] uppercase tracking-[0.6em] flex items-center gap-4 animate-pulse"><Bot size={24} /> Neural Communication Ledger Active</div>
+            /* No teacher selected */
+            <div className="flex-1 wa-bg flex flex-col items-center justify-center text-center">
+              <div className="bg-white/80 rounded-xl px-12 py-10 shadow-sm">
+                <GraduationCap className="w-14 h-14 text-gray-200 mx-auto mb-4" />
+                <p className="text-sm font-semibold text-gray-600">Select a teacher to start messaging</p>
+                <p className="text-xs text-gray-400 mt-1">All teacher conversations appear here</p>
+              </div>
             </div>
           )}
         </div>
       </div>
-      <style>{`
-        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(0,168,132,0.1); border-radius: 12px; }
-        .no-scrollbar::-webkit-scrollbar { display: none; }
-        .glass-mesh { background-image: radial-gradient(#cbd5e1 1.2px, transparent 1.2px); background-size: 40px 40px; }
-      `}</style>
+
+      {/* Rate Teacher Modal */}
+      {showRateModal && selectedTeacher && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-8 w-full max-w-sm shadow-2xl">
+            <div className="flex items-center justify-between mb-6">
+              <div>
+                <h3 className="text-lg font-black text-gray-900">Rate Teacher</h3>
+                <p className="text-sm text-teal-600 font-medium mt-0.5">{selectedTeacher.teacherName}</p>
+              </div>
+              <button onClick={() => { setShowRateModal(false); setRatingValue(0); setReviewText(""); }}
+                className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-colors">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="text-center mb-6">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">Your Rating</p>
+              <div className="flex justify-center gap-2">
+                {[1, 2, 3, 4, 5].map(star => (
+                  <button key={star}
+                    onMouseEnter={() => setHoverRating(star)}
+                    onMouseLeave={() => setHoverRating(0)}
+                    onClick={() => setRatingValue(star)}
+                    className="transition-transform hover:scale-125 active:scale-90">
+                    <Star size={36} className={`transition-colors ${star <= (hoverRating || ratingValue) ? "fill-amber-400 text-amber-400" : "text-gray-200"}`} />
+                  </button>
+                ))}
+              </div>
+              {ratingValue > 0 && (
+                <p className="text-sm font-bold text-amber-600 mt-2">
+                  {["", "Poor", "Fair", "Good", "Very Good", "Excellent"][ratingValue]}
+                </p>
+              )}
+            </div>
+
+            <div className="mb-5">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-2">Review (Optional)</p>
+              <textarea rows={3} value={reviewText} onChange={e => setReviewText(e.target.value)}
+                placeholder="Share your experience..."
+                className="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl text-sm resize-none focus:outline-none focus:ring-2 focus:ring-teal-500/20 placeholder:text-gray-300"
+                style={{ fontFamily: "'Montserrat', sans-serif" }}
+              />
+            </div>
+
+            <button onClick={handleSubmitReview} disabled={ratingValue === 0 || isSubmittingReview}
+              className="w-full h-12 rounded-xl text-white font-bold text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              style={{ backgroundColor: "#00a884" }}>
+              {isSubmittingReview ? <><Loader2 className="w-4 h-4 animate-spin" /> Submitting…</> : <><Star className="w-4 h-4 fill-white" /> Submit Review</>}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+
 export default TeacherNotesPage;
