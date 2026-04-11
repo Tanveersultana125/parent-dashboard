@@ -2,6 +2,8 @@
   "indexes": [
     { "collectionGroup": "attendance",                  "queryScope": "COLLECTION", "fields": [{ "fieldPath": "schoolId", "order": "ASCENDING" }, { "fieldPath": "studentId", "order": "ASCENDING" }] },
     { "collectionGroup": "attendance",                  "queryScope": "COLLECTION", "fields": [{ "fieldPath": "schoolId", "order": "ASCENDING" }, { "fieldPath": "studentId", "order": "ASCENDING" }, { "fieldPath": "date", "order": "ASCENDING" }] },
+    { "collectionGroup": "attendance",                  "queryScope": "COLLECTION", "fields": [{ "fieldPath": "schoolId", "order": "ASCENDING" }, { "fieldPath": "date",      "order": "ASCENDING" }] },
+    { "collectionGroup": "attendance",                  "queryScope": "COLLECTION", "fields": [{ "fieldPath": "schoolId", "order": "ASCENDING" }, { "fieldPath": "branchId",  "order": "ASCENDING" }, { "fieldPath": "date", "order": "ASCENDING" }] },
     { "collectionGroup": "enrollments",                 "queryScope": "COLLECTION", "fields": [{ "fieldPath": "schoolId", "order": "ASCENDING" }, { "fieldPath": "studentId", "order": "ASCENDING" }] },
     { "collectionGroup": "results",                     "queryScope": "COLLECTION", "fields": [{ "fieldPath": "schoolId", "order": "ASCENDING" }, { "fieldPath": "studentId", "order": "ASCENDING" }] },
     { "collectionGroup": "test_scores",                 "queryScope": "COLLECTION", "fields": [{ "fieldPath": "schoolId", "order": "ASCENDING" }, { "fieldPath": "studentId", "order": "ASCENDING" }] },
