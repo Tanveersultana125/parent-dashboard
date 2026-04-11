@@ -3,7 +3,84 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ═══════════════════════════════════════════════════════════════════════
+   NATIVE APP FEEL — Global overrides
+   ═══════════════════════════════════════════════════════════════════════ */
 
+/* 1. Prevent ALL zoom (pinch, double-tap) + pull-to-refresh */
+html, body {
+  overscroll-behavior: none;
+  overscroll-behavior-y: none;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  touch-action: pan-x pan-y;
+}
+
+/* 2. Remove tap flash highlight everywhere */
+*, *::before, *::after {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+}
+
+/* 3. Momentum scroll on scrollable areas */
+.overflow-auto,
+.overflow-y-auto,
+.overflow-x-auto,
+[data-scroll],
+main {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 4. Smooth font rendering (looks crisper on mobile OLED screens) */
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-family: 'Inter', sans-serif;
+}
+
+/* 5. Native-like button/interactive feedback */
+button, a, [role="button"], label {
+  touch-action: manipulation;   /* kills 300ms tap delay */
+  cursor: pointer;
+}
+
+/* 6. Prevent text selection on UI chrome (not on content) */
+nav, header, footer, [data-no-select] {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* 7. Safe area utilities — use these classes on fixed bottom bars */
+.safe-bottom {
+  padding-bottom: max(env(safe-area-inset-bottom), 0.5rem);
+}
+.safe-top {
+  padding-top: env(safe-area-inset-top);
+}
+.pb-safe {
+  padding-bottom: calc(env(safe-area-inset-bottom) + 4rem);
+}
+
+/* 8. Page transition animation */
+@keyframes page-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0);   }
+}
+.page-enter {
+  animation: page-enter 0.22s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+/* 9. Native bottom navigation bar safe area */
+.bottom-nav-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* 10. Prevent callout on images (iOS long-press menu) */
+img, video {
+  -webkit-user-drag: none;
+  -webkit-touch-callout: none;
+  pointer-events: auto;
+}
 
 @layer base {
   :root {
@@ -72,6 +149,8 @@
   body {
     @apply bg-background text-foreground font-sans;
     font-family: 'Inter', sans-serif;
+    /* Native app: prevent overscroll rubber-banding */
+    overscroll-behavior: none;
   }
 }
 

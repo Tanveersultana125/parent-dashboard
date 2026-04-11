@@ -1,26 +1,63 @@
 /**
- * EduIntellect Parent — Service Worker
- * Strategy:
- *   - Static assets (JS/CSS/HTML/images) → Cache-First (precached on install)
- *   - Firebase Firestore / Auth APIs     → Network-First (5 s timeout → cache)
- *   - Firebase Storage                   → Cache-First (long TTL)
- *   - Everything else                    → Network-First
+ * EduIntellect Parent — Service Worker v2
+ *
+ * Caching strategy:
+ *   Static assets (JS/CSS/HTML/fonts/images) → Cache-First   (precached on install)
+ *   Firebase Firestore / Auth APIs            → Network-First (8 s timeout → cache)
+ *   Firebase Storage                          → Cache-First   (long TTL)
+ *   Everything else                           → Network-First
+ *
+ * Native-app extras:
+ *   - Offline fallback HTML (no white screen / broken page)
+ *   - SKIP_WAITING on message (instant update)
+ *   - Push notifications ready
  */
 
-const CACHE_VERSION = 'v1';
-const STATIC_CACHE  = `eduintellect-static-${CACHE_VERSION}`;
-const API_CACHE     = `eduintellect-api-${CACHE_VERSION}`;
-const STORAGE_CACHE = `eduintellect-storage-${CACHE_VERSION}`;
+const CACHE_VERSION  = 'v2';
+const STATIC_CACHE   = `eduintellect-static-${CACHE_VERSION}`;
+const API_CACHE      = `eduintellect-api-${CACHE_VERSION}`;
+const STORAGE_CACHE  = `eduintellect-storage-${CACHE_VERSION}`;
 
-// Assets to precache on install (Vite injects __PRECACHE_MANIFEST__ in prod builds;
-// here we fall back to a minimal shell so offline shows the app shell at least)
+// App shell — cached on install so first paint is always instant
 const PRECACHE_URLS = [
   '/',
   '/index.html',
   '/manifest.json',
+  '/favicon.ico',
+  '/favicon-32x32.png',
   '/icons/icon-192x192.png',
   '/icons/icon-512x512.png',
 ];
+
+// ── Offline fallback HTML ────────────────────────────────────────────────────
+const OFFLINE_HTML = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover"/>
+  <meta name="theme-color" content="#0B1F3A"/>
+  <title>EduIntellect — Offline</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    html,body{height:100%;overscroll-behavior:none;-webkit-tap-highlight-color:transparent}
+    body{display:flex;flex-direction:column;align-items:center;justify-content:center;
+         background:#0B1F3A;color:#fff;font-family:system-ui,sans-serif;padding:2rem;text-align:center}
+    .icon{width:80px;height:80px;border-radius:24px;background:rgba(255,255,255,.1);
+          display:flex;align-items:center;justify-content:center;margin-bottom:1.5rem;font-size:2.5rem}
+    h1{font-size:1.5rem;font-weight:700;margin-bottom:.5rem}
+    p{font-size:.95rem;color:rgba(255,255,255,.65);margin-bottom:2rem;max-width:280px}
+    button{background:#fff;color:#0B1F3A;border:none;border-radius:999px;
+           padding:.75rem 2rem;font-size:1rem;font-weight:600;cursor:pointer;
+           -webkit-tap-highlight-color:transparent}
+  </style>
+</head>
+<body>
+  <div class="icon">📚</div>
+  <h1>You're Offline</h1>
+  <p>Please check your internet connection and try again.</p>
+  <button onclick="location.reload()">Try Again</button>
+</body>
+</html>`;
 
 // ── Install: precache shell ──────────────────────────────────────────────────
 self.addEventListener('install', (event) => {
@@ -56,8 +93,8 @@ function isFirebaseStorage(url) {
   return url.hostname.includes('firebasestorage.googleapis.com');
 }
 
-/** Network-first with timeout; falls back to cache */
-async function networkFirst(request, cacheName, timeoutMs = 5000) {
+/** Network-first with timeout; falls back to cache, then offline response */
+async function networkFirst(request, cacheName, timeoutMs = 8000) {
   const cache = await caches.open(cacheName);
   try {
     const controller = new AbortController();
@@ -77,7 +114,7 @@ async function networkFirst(request, cacheName, timeoutMs = 5000) {
 
 /** Cache-first; fetches and stores on miss */
 async function cacheFirst(request, cacheName) {
-  const cache = await caches.open(cacheName);
+  const cache  = await caches.open(cacheName);
   const cached = await cache.match(request);
   if (cached) return cached;
   try {
@@ -96,6 +133,7 @@ self.addEventListener('fetch', (event) => {
   // Skip non-GET and chrome-extension requests
   if (event.request.method !== 'GET') return;
   if (url.protocol === 'chrome-extension:') return;
+  if (url.protocol === 'data:') return;
 
   if (isFirebaseAPI(url)) {
     event.respondWith(networkFirst(event.request, API_CACHE, 8000));
@@ -104,11 +142,17 @@ self.addEventListener('fetch', (event) => {
   } else if (isStaticAsset(url)) {
     event.respondWith(cacheFirst(event.request, STATIC_CACHE));
   } else if (url.origin === self.location.origin) {
-    // App shell — network first, fall back to /index.html for SPA routing
+    // App shell navigation — network first, fall back to cached index, then offline page
     event.respondWith(
       fetch(event.request).catch(async () => {
-        const cache = await caches.open(STATIC_CACHE);
-        return cache.match('/index.html') || cache.match('/');
+        const cache  = await caches.open(STATIC_CACHE);
+        const cached = await cache.match('/index.html') || await cache.match('/');
+        if (cached) return cached;
+        // Ultimate fallback: inline offline page (never white screen)
+        return new Response(OFFLINE_HTML, {
+          status: 200,
+          headers: { 'Content-Type': 'text/html; charset=utf-8' },
+        });
       })
     );
   } else {
@@ -116,12 +160,19 @@ self.addEventListener('fetch', (event) => {
   }
 });
 
-// ── Push notifications (future use) ─────────────────────────────────────────
+// ── Push notifications ───────────────────────────────────────────────────────
 self.addEventListener('push', (event) => {
   if (!event.data) return;
-  const { title = 'EduIntellect', body = '', icon = '/icons/icon-192x192.png' } = event.data.json();
+  const { title = 'EduIntellect', body = '', icon = '/icons/icon-192x192.png', url = '/' } =
+    event.data.json();
   event.waitUntil(
-    self.registration.showNotification(title, { body, icon, badge: '/icons/icon-96x96.png' })
+    self.registration.showNotification(title, {
+      body,
+      icon,
+      badge: '/icons/icon-96x96.png',
+      data: { url },
+      vibrate: [100, 50, 100],
+    })
   );
 });
 
@@ -130,7 +181,21 @@ self.addEventListener('message', (event) => {
   if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
+// ── Notification click ───────────────────────────────────────────────────────
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  event.waitUntil(clients.openWindow('/'));
+  const targetUrl = event.notification.data?.url || '/';
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
+      // If app already open, focus it
+      for (const client of clientList) {
+        if (client.url.includes(self.location.origin) && 'focus' in client) {
+          client.navigate(targetUrl);
+          return client.focus();
+        }
+      }
+      // Otherwise open new window
+      if (clients.openWindow) return clients.openWindow(targetUrl);
+    })
+  );
 });

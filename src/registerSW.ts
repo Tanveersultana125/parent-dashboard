@@ -1,7 +1,10 @@
 /**
- * Registers the service worker and dispatches custom events:
+ * Registers the EduIntellect service worker.
+ * Dispatches custom events:
  *   'sw-update-available' — a new SW version is waiting
  *   'sw-registered'       — SW registered successfully
+ *
+ * Registered in ALL environments (prod + dev) so offline works during testing too.
  */
 export function registerSW() {
   if (!('serviceWorker' in navigator)) return;
@@ -11,7 +14,7 @@ export function registerSW() {
       const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
       window.dispatchEvent(new CustomEvent('sw-registered', { detail: reg }));
 
-      // Check for waiting worker (update available)
+      // Check for waiting worker (update available on page load)
       if (reg.waiting) {
         window.dispatchEvent(new CustomEvent('sw-update-available', { detail: reg }));
       }

@@ -2,7 +2,9 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+
+    <!-- ── Viewport: prevent zoom, enable safe-area ────────────────────── -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover" />
 
     <!-- Primary -->
     <title>EduIntellect Parent</title>
@@ -10,12 +12,13 @@
     <meta name="author" content="EduIntellect" />
     <meta name="keywords" content="school, parent, education, student, attendance, grades" />
 
-    <!-- PWA -->
+    <!-- ── PWA core ────────────────────────────────────────────────────── -->
     <link rel="manifest" href="/manifest.json" />
     <meta name="theme-color" content="#0B1F3A" />
     <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="application-name" content="EduIntellect" />
 
-    <!-- Apple PWA -->
+    <!-- ── Apple PWA ───────────────────────────────────────────────────── -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="EduIntellect" />
@@ -23,11 +26,14 @@
     <link rel="apple-touch-icon" sizes="152x152" href="/icons/icon-152x152.png" />
     <link rel="apple-touch-icon" sizes="192x192" href="/icons/icon-192x192.png" />
 
-    <!-- Favicons -->
+    <!-- ── Apple Splash Screens (common sizes) ────────────────────────── -->
+    <meta name="apple-touch-fullscreen" content="yes" />
+
+    <!-- ── Favicons ────────────────────────────────────────────────────── -->
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
     <link rel="icon" href="/favicon.ico" />
 
-    <!-- OG / Social -->
+    <!-- ── OG / Social ────────────────────────────────────────────────── -->
     <meta property="og:title" content="EduIntellect Parent" />
     <meta property="og:description" content="Track your child's academic progress in real time." />
     <meta property="og:type" content="website" />
@@ -36,11 +42,46 @@
     <meta name="twitter:title" content="EduIntellect Parent" />
     <meta name="twitter:image" content="/icons/icon-512x512.png" />
 
-    <!-- Microsoft Tiles -->
+    <!-- ── Microsoft Tiles ────────────────────────────────────────────── -->
     <meta name="msapplication-TileColor" content="#0B1F3A" />
     <meta name="msapplication-TileImage" content="/icons/icon-144x144.png" />
+    <meta name="msapplication-tap-highlight" content="no" />
 
-    <!-- PDF.js (existing) -->
+    <!-- ── Critical native-app CSS (inline = zero layout shift) ─────────
+         Prevents: pull-to-refresh, white flash, zoom rubber-banding,
+         tap highlight flash, iOS callout menus.
+         Applied before React hydrates so there's no FOUC.          -->
+    <style>
+      html {
+        overscroll-behavior: none;
+        -webkit-text-size-adjust: 100%;
+        text-size-adjust: 100%;
+      }
+      body {
+        overscroll-behavior: none;
+        overscroll-behavior-y: none;
+        -webkit-overflow-scrolling: touch;
+        -webkit-tap-highlight-color: transparent;
+        -webkit-touch-callout: none;
+        touch-action: pan-y;
+        margin: 0;
+        /* Safe area for notched phones */
+        padding-top: env(safe-area-inset-top);
+        padding-bottom: env(safe-area-inset-bottom);
+        padding-left: env(safe-area-inset-left);
+        padding-right: env(safe-area-inset-right);
+      }
+      /* Splash screen: show app color while JS loads */
+      #root:empty::before {
+        content: '';
+        position: fixed;
+        inset: 0;
+        background: #0B1F3A;
+        z-index: 9999;
+      }
+    </style>
+
+    <!-- ── PDF.js ─────────────────────────────────────────────────────── -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
     <script>
       window.pdfjsLib = window['pdfjs-dist/build/pdf'];
