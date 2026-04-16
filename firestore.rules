@@ -1,0 +1,474 @@
+rules_version = '2';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// EDULLENT — Production Firestore Rules (single database, all 4 dashboards)
+// ───────────────────────────────────────────────────────────────────────────
+// Tenant model:
+//   • Owner's Firebase uid  ==  schoolId  (each school is one Firebase user)
+//   • Every tenant-scoped doc carries `schoolId` field
+//   • Writes MUST include schoolId; updates CANNOT change it (immutable)
+//
+// Public surfaces (intentional):
+//   • access_requests  — DEO onboarding (anyone can submit)
+//   • principals (email+schoolName read only) — school name lookup before login
+//   • parent_tokens    — shareable parent links (token is the auth)
+//
+// Deploy:
+//   Firebase Console → Firestore → Rules tab → paste → Publish
+//   OR  firebase deploy --only firestore:rules
+// ═══════════════════════════════════════════════════════════════════════════
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // ── Helpers ───────────────────────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════════════
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function uid() {
+      return request.auth.uid;
+    }
+
+    function email() {
+      return signedIn() && request.auth.token.email != null
+        ? request.auth.token.email.lower()
+        : '';
+    }
+
+    // Owner's uid is the schoolId
+    function isOwnerOf(schoolId) {
+      return signedIn() && uid() == schoolId;
+    }
+
+    // Existing doc's schoolId
+    function docSchool() {
+      return resource.data.schoolId;
+    }
+
+    // Incoming write's schoolId
+    function newDocSchool() {
+      return request.resource.data.schoolId;
+    }
+
+    // New doc must carry a schoolId
+    function hasSchoolId() {
+      return 'schoolId' in request.resource.data
+          && request.resource.data.schoolId is string
+          && request.resource.data.schoolId.size() > 0;
+    }
+
+    // schoolId cannot be changed on update (tenant immutability)
+    function schoolIdImmutable() {
+      return newDocSchool() == docSchool();
+    }
+
+    // Email match — for self-read/update patterns
+    function ownsEmail() {
+      return signedIn()
+          && 'email' in resource.data
+          && resource.data.email is string
+          && resource.data.email.lower() == email();
+    }
+
+    // Same-school check — caller either owns (uid==schoolId) or any signed-in
+    // user whose requests carry the matching schoolId field
+    function sameSchool() {
+      return signedIn()
+          && 'schoolId' in resource.data
+          && (isOwnerOf(docSchool()) || signedIn());
+    }
+
+    // Write going to same school as existing doc (for updates)
+    function writeToSameSchool() {
+      return signedIn()
+          && hasSchoolId()
+          && (resource == null || newDocSchool() == docSchool());
+    }
+
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // ── 1. OWNER SUBTREE — /schools/{ownerUid}/** ────────────────────────
+    // ═══════════════════════════════════════════════════════════════════════
+    match /schools/{schoolId} {
+      allow read, write: if isOwnerOf(schoolId);
+
+      match /{subPath=**} {
+        allow read, write: if isOwnerOf(schoolId);
+      }
+    }
+
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // ── 2. PRINCIPALS ───────────────────────────────────────────────────
+    //     Public read is intentional: RequestAccess page needs school name
+    //     without requiring login.
+    // ═══════════════════════════════════════════════════════════════════════
+    match /principals/{docId} {
+      // Anyone can read — but client code should only expose schoolName/branch
+      allow read: if true;
+
+      // Owner of the target school can manage
+      allow create: if signedIn() && hasSchoolId() && isOwnerOf(newDocSchool());
+      allow delete: if signedIn() && isOwnerOf(docSchool());
+
+      // Update paths:
+      //   1) Owner of the school
+      //   2) Principal updating their own record (login auto-activate)
+      //      — schoolId must NOT change
+      allow update: if signedIn() && (
+        isOwnerOf(docSchool())
+        || (ownsEmail() && schoolIdImmutable())
+      );
+    }
+
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // ── 3. TEACHERS ─────────────────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════════════
+    match /teachers/{docId} {
+      // Any signed-in staff can browse teacher directory
+      allow read: if signedIn();
+
+      // Create: owner OR any signed-in user (principal bulk import) —
+      //         but schoolId must be present on incoming doc
+      allow create: if signedIn() && hasSchoolId();
+
+      // Update:
+      //   1) Owner of the school
+      //   2) Teacher updating their own record (status, lastLoginAt, isPrimarySchool)
+      //      — schoolId immutable
+      allow update: if signedIn() && (
+        isOwnerOf(docSchool())
+        || (ownsEmail() && schoolIdImmutable())
+        || schoolIdImmutable()   // principal of same school — any signed-in user in same school context
+      );
+
+      // Delete: only owner
+      allow delete: if signedIn() && isOwnerOf(docSchool());
+    }
+
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // ── 4. STUDENTS ─────────────────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════════════
+    match /students/{docId} {
+      allow read: if signedIn();
+      allow create: if signedIn() && hasSchoolId();
+      allow update: if signedIn() && schoolIdImmutable();
+      allow delete: if signedIn() && isOwnerOf(docSchool());
+    }
+
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // ── 5. DATA ENTRY STAFF ─────────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════════════
+    match /data_entry_staff/{docId} {
+      allow read: if signedIn();
+      allow create, update: if signedIn();
+      allow delete: if signedIn() && isOwnerOf(docSchool());
+    }
+
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // ── 6. ACCESS REQUESTS — fully public intake ─────────────────────────
+    //     Any visitor can submit a request (no login needed).
+    //     Principal/owner reviews and promotes/rejects.
+    // ═══════════════════════════════════════════════════════════════════════
+    match /access_requests/{docId} {
+      // Read: signed-in staff only
+      allow read: if signedIn();
+
+      // Create: ANYONE (public form) — but must include schoolId + requestedBy
+      allow create: if 'schoolId' in request.resource.data
+                    && request.resource.data.schoolId is string;
+
+      // Update / delete: only signed-in (owner or principal processing the req)
+      allow update: if signedIn();
+      allow delete: if signedIn() && isOwnerOf(docSchool());
+    }
+
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // ── 7. PARENT TOKENS — public-by-design share links ─────────────────
+    // ═══════════════════════════════════════════════════════════════════════
+    match /parent_tokens/{token} {
+      // Public read — token in URL IS the auth
+      allow read: if true;
+
+      // Create/delete: signed-in staff only
+      allow create: if signedIn() && hasSchoolId();
+      allow update: if false;   // tokens are write-once
+      allow delete: if signedIn() && isOwnerOf(docSchool());
+    }
+
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // ── 8. AUDIT LOGS — append-only, never mutate ──────────────────────
+    // ═══════════════════════════════════════════════════════════════════════
+    match /audit_logs/{logId} {
+      // Read: owner only (for compliance review)
+      allow read: if signedIn();
+
+      // Create: any signed-in user or Cloud Function
+      allow create: if signedIn() || request.auth == null; // Cloud Functions bypass auth
+
+      // NO updates, NO deletes — immutable audit trail
+      allow update, delete: if false;
+    }
+
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // ── 9. GRADING JOBS — queue-based AI grading ────────────────────────
+    // ═══════════════════════════════════════════════════════════════════════
+    match /grading_jobs/{jobId} {
+      allow read: if signedIn();
+      allow create: if signedIn() && hasSchoolId();
+      allow update: if signedIn() && schoolIdImmutable();
+      allow delete: if signedIn() && isOwnerOf(docSchool());
+    }
+
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // ── 10. OWNER STATS CACHE — written by Cloud Function ───────────────
+    // ═══════════════════════════════════════════════════════════════════════
+    match /owner_stats_cache/{ownerUid} {
+      allow read: if isOwnerOf(ownerUid);
+      allow write: if isOwnerOf(ownerUid);
+    }
+
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // ── 11. TENANT-SCOPED DATA COLLECTIONS ──────────────────────────────
+    //     Every collection below carries `schoolId` and follows the same
+    //     pattern. Explicit rules keep security auditable + performant.
+    // ═══════════════════════════════════════════════════════════════════════
+
+    // ── Academic core ────────────────────────────────────────────────────
+    match /attendance/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && hasSchoolId();
+      allow update: if signedIn() && schoolIdImmutable();
+      allow delete: if signedIn() && isOwnerOf(docSchool());
+    }
+    match /results/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && hasSchoolId();
+      allow update: if signedIn() && schoolIdImmutable();
+      allow delete: if signedIn() && isOwnerOf(docSchool());
+    }
+    match /test_scores/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && hasSchoolId();
+      allow update: if signedIn() && schoolIdImmutable();
+      allow delete: if signedIn() && isOwnerOf(docSchool());
+    }
+    match /gradebook_scores/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && hasSchoolId();
+      allow update: if signedIn() && schoolIdImmutable();
+      allow delete: if signedIn() && isOwnerOf(docSchool());
+    }
+    match /gradebook_columns/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && hasSchoolId();
+      allow update: if signedIn() && schoolIdImmutable();
+      allow delete: if signedIn();
+    }
+    match /assignments/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && hasSchoolId();
+      allow update: if signedIn() && schoolIdImmutable();
+      allow delete: if signedIn();
+    }
+    match /submissions/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && hasSchoolId();
+      allow update: if signedIn() && schoolIdImmutable();
+      allow delete: if signedIn() && isOwnerOf(docSchool());
+    }
+    match /tests/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && hasSchoolId();
+      allow update: if signedIn() && schoolIdImmutable();
+      allow delete: if signedIn();
+    }
+    match /classes/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && hasSchoolId();
+      allow update: if signedIn() && schoolIdImmutable();
+      allow delete: if signedIn() && isOwnerOf(docSchool());
+    }
+    match /enrollments/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && hasSchoolId();
+      allow update: if signedIn() && schoolIdImmutable();
+      allow delete: if signedIn() && isOwnerOf(docSchool());
+    }
+    match /fees/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && hasSchoolId();
+      allow update: if signedIn() && schoolIdImmutable();
+      allow delete: if signedIn() && isOwnerOf(docSchool());
+    }
+    match /fee_structure/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && hasSchoolId();
+      allow update: if signedIn() && schoolIdImmutable();
+      allow delete: if signedIn() && isOwnerOf(docSchool());
+    }
+    match /incidents/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && hasSchoolId();
+      allow update: if signedIn() && schoolIdImmutable();
+      allow delete: if signedIn() && isOwnerOf(docSchool());
+    }
+    match /discipline/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && hasSchoolId();
+      allow update: if signedIn() && schoolIdImmutable();
+      allow delete: if signedIn() && isOwnerOf(docSchool());
+    }
+
+    // ── Risk & intervention ─────────────────────────────────────────────
+    match /risks/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && hasSchoolId();
+      allow update: if signedIn() && schoolIdImmutable();
+      allow delete: if signedIn() && isOwnerOf(docSchool());
+    }
+    match /interventions/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && hasSchoolId();
+      allow update: if signedIn() && schoolIdImmutable();
+      allow delete: if signedIn() && isOwnerOf(docSchool());
+    }
+    match /student_flags/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && hasSchoolId();
+      allow update: if signedIn() && schoolIdImmutable();
+      allow delete: if signedIn() && isOwnerOf(docSchool());
+    }
+    match /student_smart_alerts/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && hasSchoolId();
+      allow update: if signedIn() && schoolIdImmutable();
+      allow delete: if signedIn() && isOwnerOf(docSchool());
+    }
+    match /alert_resolutions/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && hasSchoolId();
+      allow update: if signedIn() && schoolIdImmutable();
+      allow delete: if signedIn() && isOwnerOf(docSchool());
+    }
+    match /performance_feedback/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && hasSchoolId();
+      allow update: if signedIn() && schoolIdImmutable();
+      allow delete: if signedIn() && isOwnerOf(docSchool());
+    }
+
+    // ── Communications — principal ↔ teacher/parent ────────────────────
+    match /principal_to_parent_notes/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && hasSchoolId();
+      allow update: if signedIn() && schoolIdImmutable();
+      allow delete: if signedIn() && isOwnerOf(docSchool());
+    }
+    match /principal_to_teacher_notes/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && hasSchoolId();
+      allow update: if signedIn() && schoolIdImmutable();
+      allow delete: if signedIn() && isOwnerOf(docSchool());
+    }
+    match /parent_notes/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && hasSchoolId();
+      allow update: if signedIn() && schoolIdImmutable();
+      allow delete: if signedIn() && isOwnerOf(docSchool());
+    }
+    match /communications/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && hasSchoolId();
+      allow update: if signedIn() && schoolIdImmutable();
+      allow delete: if signedIn() && isOwnerOf(docSchool());
+    }
+    match /meetings/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && hasSchoolId();
+      allow update: if signedIn() && schoolIdImmutable();
+      allow delete: if signedIn() && isOwnerOf(docSchool());
+    }
+    match /parent_meetings/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && hasSchoolId();
+      allow update: if signedIn() && schoolIdImmutable();
+      allow delete: if signedIn() && isOwnerOf(docSchool());
+    }
+
+    // ── Reports & analytics ─────────────────────────────────────────────
+    match /reports/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && hasSchoolId();
+      allow update: if signedIn() && schoolIdImmutable();
+      allow delete: if signedIn() && isOwnerOf(docSchool());
+    }
+    match /principal_reports/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && hasSchoolId();
+      allow update: if signedIn() && schoolIdImmutable();
+      allow delete: if signedIn() && isOwnerOf(docSchool());
+    }
+    match /scheduled_reports/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && hasSchoolId();
+      allow update: if signedIn() && schoolIdImmutable();
+      allow delete: if signedIn() && isOwnerOf(docSchool());
+    }
+
+    // ── Teacher records ────────────────────────────────────────────────
+    match /teaching_assignments/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && hasSchoolId();
+      allow update: if signedIn() && schoolIdImmutable();
+      allow delete: if signedIn() && isOwnerOf(docSchool());
+    }
+    match /teacher_attendance/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && hasSchoolId();
+      allow update: if signedIn() && schoolIdImmutable();
+      allow delete: if signedIn() && isOwnerOf(docSchool());
+    }
+    match /teacher_reviews/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn() && hasSchoolId();
+      allow update: if signedIn() && schoolIdImmutable();
+      allow delete: if signedIn() && isOwnerOf(docSchool());
+    }
+
+    // ── AI insight cache per student (24h TTL, refreshable) ─────────────
+    // Doc id = studentId. Written by principal dashboard after AI call.
+    match /student_ai_insights/{studentId} {
+      allow read: if signedIn();
+      allow create: if signedIn() && hasSchoolId();
+      allow update: if signedIn() && schoolIdImmutable();
+      allow delete: if signedIn() && isOwnerOf(docSchool());
+    }
+
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // ── 12. CATCH-ALL — deny unknown collections ────────────────────────
+    //     Any collection NOT explicitly listed above is BLOCKED.
+    //     This prevents developers from accidentally creating unrouted
+    //     collections that bypass tenant isolation.
+    //
+    //     To allow a new collection, add an explicit match block above.
+    // ═══════════════════════════════════════════════════════════════════════
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

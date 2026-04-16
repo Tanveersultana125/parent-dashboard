@@ -8,6 +8,7 @@ import {
 } from 'firebase/auth';
 import { auth, db } from './firebase';
 import { collection, query, where, getDocs, updateDoc, doc, onSnapshot } from 'firebase/firestore';
+import { syncClaimsAndRefreshToken } from './syncClaims';
 
 interface AuthContextType {
   user: User | null;
@@ -35,6 +36,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setLoading(true);
       if (currentUser && currentUser.email) {
         try {
+          // Sync custom claims first so subsequent reads pass through Firestore rules.
+          await syncClaimsAndRefreshToken(currentUser);
+
           // Whitelist Check for Students/Parents
           const q = query(collection(db, "students"), where("email", "==", currentUser.email.toLowerCase()));
           const querySnapshot = await getDocs(q);
