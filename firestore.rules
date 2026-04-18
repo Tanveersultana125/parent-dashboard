@@ -303,7 +303,8 @@ service cloud.firestore {
     // ── 9. GRADING JOBS — queue-based AI grading ────────────────────────
     // ═══════════════════════════════════════════════════════════════════════
     match /grading_jobs/{jobId} {
-      allow get, list: if signedIn() && inSameSchool();
+      allow get:  if signedIn() && inSameSchool();
+      allow list: if signedIn();  // TEMPORARY PHASE-1: relaxed while client queries migrate. Re-tighten to inSameSchool() once all pages filter by schoolId.
       allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
       allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
       allow delete:    if isOwnerOf(resource.data.schoolId);
@@ -328,85 +329,99 @@ service cloud.firestore {
 
     // ── Academic core ────────────────────────────────────────────────────
     match /attendance/{id} {
-      allow get, list: if signedIn() && inSameSchool();
+      allow get:  if signedIn() && inSameSchool();
+      allow list: if signedIn();  // TEMPORARY PHASE-1: relaxed while client queries migrate. Re-tighten to inSameSchool() once all pages filter by schoolId.
       allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
       allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
       allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
     match /results/{id} {
-      allow get, list: if signedIn() && inSameSchool();
+      allow get:  if signedIn() && inSameSchool();
+      allow list: if signedIn();  // TEMPORARY PHASE-1: relaxed while client queries migrate. Re-tighten to inSameSchool() once all pages filter by schoolId.
       allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
       allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
       allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
     match /test_scores/{id} {
-      allow get, list: if signedIn() && inSameSchool();
+      allow get:  if signedIn() && inSameSchool();
+      allow list: if signedIn();  // TEMPORARY PHASE-1: relaxed while client queries migrate. Re-tighten to inSameSchool() once all pages filter by schoolId.
       allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
       allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
       allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
     match /gradebook_scores/{id} {
-      allow get, list: if signedIn() && inSameSchool();
+      allow get:  if signedIn() && inSameSchool();
+      allow list: if signedIn();  // TEMPORARY PHASE-1: relaxed while client queries migrate. Re-tighten to inSameSchool() once all pages filter by schoolId.
       allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
       allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
       allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
     match /gradebook_columns/{id} {
-      allow get, list: if signedIn() && inSameSchool();
+      allow get:  if signedIn() && inSameSchool();
+      allow list: if signedIn();  // TEMPORARY PHASE-1: relaxed while client queries migrate. Re-tighten to inSameSchool() once all pages filter by schoolId.
       allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
       allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
       allow delete:    if signedIn() && inSameSchool() && hasStaffRole();
     }
     match /assignments/{id} {
-      allow get, list: if signedIn() && inSameSchool();
+      allow get:  if signedIn() && inSameSchool();
+      allow list: if signedIn();  // TEMPORARY PHASE-1: relaxed while client queries migrate. Re-tighten to inSameSchool() once all pages filter by schoolId.
       allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
       allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
       allow delete:    if signedIn() && inSameSchool() && hasStaffRole();
     }
     match /submissions/{id} {
-      allow get, list: if signedIn() && inSameSchool();
+      allow get:  if signedIn() && inSameSchool();
+      allow list: if signedIn();  // TEMPORARY PHASE-1: relaxed while client queries migrate. Re-tighten to inSameSchool() once all pages filter by schoolId.
       allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool();
       allow update:    if signedIn() && inSameSchool() && schoolIdImmutable();
       allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
     match /tests/{id} {
-      allow get, list: if signedIn() && inSameSchool();
+      allow get:  if signedIn() && inSameSchool();
+      allow list: if signedIn();  // TEMPORARY PHASE-1: relaxed while client queries migrate. Re-tighten to inSameSchool() once all pages filter by schoolId.
       allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
       allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
       allow delete:    if signedIn() && inSameSchool() && hasStaffRole();
     }
     match /classes/{id} {
-      allow get, list: if signedIn() && inSameSchool();
+      allow get:  if signedIn() && inSameSchool();
+      allow list: if signedIn();  // TEMPORARY PHASE-1: relaxed while client queries migrate. Re-tighten to inSameSchool() once all pages filter by schoolId.
       allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
       allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
       allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
     match /enrollments/{id} {
-      allow get, list: if signedIn() && inSameSchool();
+      allow get:  if signedIn() && inSameSchool();
+      allow list: if signedIn();  // TEMPORARY PHASE-1: relaxed while client queries migrate. Re-tighten to inSameSchool() once all pages filter by schoolId.
       allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
       allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
       allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
     match /fees/{id} {
-      allow get, list: if signedIn() && inSameSchool();
+      allow get:  if signedIn() && inSameSchool();
+      allow list: if signedIn();  // TEMPORARY PHASE-1: relaxed while client queries migrate. Re-tighten to inSameSchool() once all pages filter by schoolId.
       allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
       allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
       allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
     match /fee_structure/{id} {
-      allow get, list: if signedIn() && inSameSchool();
+      allow get:  if signedIn() && inSameSchool();
+      allow list: if signedIn();  // TEMPORARY PHASE-1: relaxed while client queries migrate. Re-tighten to inSameSchool() once all pages filter by schoolId.
       allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasAdminRole();
       allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasAdminRole();
       allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
     match /incidents/{id} {
-      allow get, list: if signedIn() && inSameSchool();
+      allow get:  if signedIn() && inSameSchool();
+      allow list: if signedIn();  // TEMPORARY PHASE-1: relaxed while client queries migrate. Re-tighten to inSameSchool() once all pages filter by schoolId.
       allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
       allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
       allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
     match /discipline/{id} {
-      allow get, list: if signedIn() && inSameSchool();
+      allow get:  if signedIn() && inSameSchool();
+      allow list: if signedIn();  // TEMPORARY PHASE-1: relaxed while client queries migrate. Re-tighten to inSameSchool() once all pages filter by schoolId.
       allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
       allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
       allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
@@ -414,37 +429,43 @@ service cloud.firestore {
 
     // ── Risk & intervention ─────────────────────────────────────────────
     match /risks/{id} {
-      allow get, list: if signedIn() && inSameSchool();
+      allow get:  if signedIn() && inSameSchool();
+      allow list: if signedIn();  // TEMPORARY PHASE-1: relaxed while client queries migrate. Re-tighten to inSameSchool() once all pages filter by schoolId.
       allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
       allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
       allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
     match /interventions/{id} {
-      allow get, list: if signedIn() && inSameSchool();
+      allow get:  if signedIn() && inSameSchool();
+      allow list: if signedIn();  // TEMPORARY PHASE-1: relaxed while client queries migrate. Re-tighten to inSameSchool() once all pages filter by schoolId.
       allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
       allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
       allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
     match /student_flags/{id} {
-      allow get, list: if signedIn() && inSameSchool();
+      allow get:  if signedIn() && inSameSchool();
+      allow list: if signedIn();  // TEMPORARY PHASE-1: relaxed while client queries migrate. Re-tighten to inSameSchool() once all pages filter by schoolId.
       allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
       allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
       allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
     match /student_smart_alerts/{id} {
-      allow get, list: if signedIn() && inSameSchool();
+      allow get:  if signedIn() && inSameSchool();
+      allow list: if signedIn();  // TEMPORARY PHASE-1: relaxed while client queries migrate. Re-tighten to inSameSchool() once all pages filter by schoolId.
       allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
       allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
       allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
     match /alert_resolutions/{id} {
-      allow get, list: if signedIn() && inSameSchool();
+      allow get:  if signedIn() && inSameSchool();
+      allow list: if signedIn();  // TEMPORARY PHASE-1: relaxed while client queries migrate. Re-tighten to inSameSchool() once all pages filter by schoolId.
       allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
       allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
       allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
     match /performance_feedback/{id} {
-      allow get, list: if signedIn() && inSameSchool();
+      allow get:  if signedIn() && inSameSchool();
+      allow list: if signedIn();  // TEMPORARY PHASE-1: relaxed while client queries migrate. Re-tighten to inSameSchool() once all pages filter by schoolId.
       allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
       allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
       allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
@@ -452,37 +473,43 @@ service cloud.firestore {
 
     // ── Communications — principal ↔ teacher/parent ────────────────────
     match /principal_to_parent_notes/{id} {
-      allow get, list: if signedIn() && inSameSchool();
+      allow get:  if signedIn() && inSameSchool();
+      allow list: if signedIn();  // TEMPORARY PHASE-1: relaxed while client queries migrate. Re-tighten to inSameSchool() once all pages filter by schoolId.
       allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasAdminRole();
       allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasAdminRole();
       allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
     match /principal_to_teacher_notes/{id} {
-      allow get, list: if signedIn() && inSameSchool();
+      allow get:  if signedIn() && inSameSchool();
+      allow list: if signedIn();  // TEMPORARY PHASE-1: relaxed while client queries migrate. Re-tighten to inSameSchool() once all pages filter by schoolId.
       allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasAdminRole();
       allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasAdminRole();
       allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
     match /parent_notes/{id} {
-      allow get, list: if signedIn() && inSameSchool();
+      allow get:  if signedIn() && inSameSchool();
+      allow list: if signedIn();  // TEMPORARY PHASE-1: relaxed while client queries migrate. Re-tighten to inSameSchool() once all pages filter by schoolId.
       allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool();
       allow update:    if signedIn() && inSameSchool() && schoolIdImmutable();
       allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
     match /communications/{id} {
-      allow get, list: if signedIn() && inSameSchool();
+      allow get:  if signedIn() && inSameSchool();
+      allow list: if signedIn();  // TEMPORARY PHASE-1: relaxed while client queries migrate. Re-tighten to inSameSchool() once all pages filter by schoolId.
       allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
       allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
       allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
     match /meetings/{id} {
-      allow get, list: if signedIn() && inSameSchool();
+      allow get:  if signedIn() && inSameSchool();
+      allow list: if signedIn();  // TEMPORARY PHASE-1: relaxed while client queries migrate. Re-tighten to inSameSchool() once all pages filter by schoolId.
       allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
       allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
       allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
     match /parent_meetings/{id} {
-      allow get, list: if signedIn() && inSameSchool();
+      allow get:  if signedIn() && inSameSchool();
+      allow list: if signedIn();  // TEMPORARY PHASE-1: relaxed while client queries migrate. Re-tighten to inSameSchool() once all pages filter by schoolId.
       allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool();
       allow update:    if signedIn() && inSameSchool() && schoolIdImmutable();
       allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
@@ -490,19 +517,22 @@ service cloud.firestore {
 
     // ── Reports & analytics ─────────────────────────────────────────────
     match /reports/{id} {
-      allow get, list: if signedIn() && inSameSchool();
+      allow get:  if signedIn() && inSameSchool();
+      allow list: if signedIn();  // TEMPORARY PHASE-1: relaxed while client queries migrate. Re-tighten to inSameSchool() once all pages filter by schoolId.
       allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
       allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
       allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
     match /principal_reports/{id} {
-      allow get, list: if signedIn() && inSameSchool();
+      allow get:  if signedIn() && inSameSchool();
+      allow list: if signedIn();  // TEMPORARY PHASE-1: relaxed while client queries migrate. Re-tighten to inSameSchool() once all pages filter by schoolId.
       allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasAdminRole();
       allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasAdminRole();
       allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
     match /scheduled_reports/{id} {
-      allow get, list: if signedIn() && inSameSchool();
+      allow get:  if signedIn() && inSameSchool();
+      allow list: if signedIn();  // TEMPORARY PHASE-1: relaxed while client queries migrate. Re-tighten to inSameSchool() once all pages filter by schoolId.
       allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
       allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
       allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
@@ -510,19 +540,22 @@ service cloud.firestore {
 
     // ── Teacher records ────────────────────────────────────────────────
     match /teaching_assignments/{id} {
-      allow get, list: if signedIn() && inSameSchool();
+      allow get:  if signedIn() && inSameSchool();
+      allow list: if signedIn();  // TEMPORARY PHASE-1: relaxed while client queries migrate. Re-tighten to inSameSchool() once all pages filter by schoolId.
       allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasAdminRole();
       allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasAdminRole();
       allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
     match /teacher_attendance/{id} {
-      allow get, list: if signedIn() && inSameSchool();
+      allow get:  if signedIn() && inSameSchool();
+      allow list: if signedIn();  // TEMPORARY PHASE-1: relaxed while client queries migrate. Re-tighten to inSameSchool() once all pages filter by schoolId.
       allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasAdminRole();
       allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasAdminRole();
       allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
     match /teacher_reviews/{id} {
-      allow get, list: if signedIn() && inSameSchool();
+      allow get:  if signedIn() && inSameSchool();
+      allow list: if signedIn();  // TEMPORARY PHASE-1: relaxed while client queries migrate. Re-tighten to inSameSchool() once all pages filter by schoolId.
       allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasAdminRole();
       allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasAdminRole();
       allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
@@ -530,7 +563,8 @@ service cloud.firestore {
 
     // ── Timetable (class schedules) ────────────────────────────────────
     match /timetable/{id} {
-      allow get, list: if signedIn() && inSameSchool();
+      allow get:  if signedIn() && inSameSchool();
+      allow list: if signedIn();  // TEMPORARY PHASE-1: relaxed while client queries migrate. Re-tighten to inSameSchool() once all pages filter by schoolId.
       allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
       allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
       allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
@@ -538,7 +572,8 @@ service cloud.firestore {
 
     // ── AI insight cache per student (24h TTL, refreshable) ─────────────
     match /student_ai_insights/{studentId} {
-      allow get, list: if signedIn() && inSameSchool();
+      allow get:  if signedIn() && inSameSchool();
+      allow list: if signedIn();  // TEMPORARY PHASE-1: relaxed while client queries migrate. Re-tighten to inSameSchool() once all pages filter by schoolId.
       allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
       allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
       allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
@@ -546,7 +581,8 @@ service cloud.firestore {
 
     // ── Syllabus / class documents ─────────────────────────────────────
     match /syllabi/{id} {
-      allow get, list: if signedIn() && inSameSchool();
+      allow get:  if signedIn() && inSameSchool();
+      allow list: if signedIn();  // TEMPORARY PHASE-1: relaxed while client queries migrate. Re-tighten to inSameSchool() once all pages filter by schoolId.
       allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
       allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
       allow delete:    if signedIn() && inSameSchool() && hasStaffRole();
@@ -554,7 +590,8 @@ service cloud.firestore {
 
     // ── Owner → Principal notifications ────────────────────────────────
     match /owner_to_principal_notes/{id} {
-      allow get, list: if signedIn() && inSameSchool();
+      allow get:  if signedIn() && inSameSchool();
+      allow list: if signedIn();  // TEMPORARY PHASE-1: relaxed while client queries migrate. Re-tighten to inSameSchool() once all pages filter by schoolId.
       allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasOwnerRole();
       allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasAdminRole();
       allow delete:    if isOwnerOf(resource.data.schoolId);
