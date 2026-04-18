@@ -8,67 +8,181 @@ const pdf = require('pdf-parse');
 admin.initializeApp();
 
 // ── Secret Manager — key stored securely, never in source code ───────────────
-// To set: firebase secrets:set OPENAI_API_KEY
-// Then deploy: firebase deploy --only functions
 const openaiApiKey = defineSecret("OPENAI_API_KEY");
 
-// ── Original tutor function (kept for backward compatibility) ─────────────────
+// ── Shared constants ─────────────────────────────────────────────────────────
+const ALLOWED_ROLES = new Set(["owner", "principal", "teacher", "data_entry", "parent"]);
+const STAFF_ROLES = new Set(["owner", "principal", "teacher", "data_entry"]);
+const ADMIN_ROLES = new Set(["owner", "principal"]);
+
+const ALLOWED_OPENAI_MODELS = new Set([
+  "gpt-4o-mini",
+  "gpt-4.1-mini",
+]);
+
+const MAX_PROMPT_CHARS = 8000;
+const MAX_IMAGE_B64_BYTES = 8 * 1024 * 1024;   // ~6 MB raw image
+const MAX_PDF_BYTES = 20 * 1024 * 1024;
+const PDF_FETCH_TIMEOUT_MS = 15_000;
+
+// Only allow PDF fetches from Firebase / GCS hosted files — kills SSRF.
+const ALLOWED_PDF_HOSTS = [
+  "firebasestorage.googleapis.com",
+  "storage.googleapis.com",
+];
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function requireAuth(context: functions.https.CallableContext) {
+  if (!context.auth) {
+    throw new functions.https.HttpsError("unauthenticated", "Login required.");
+  }
+  return context.auth;
+}
+
+function requireRole(
+  context: functions.https.CallableContext,
+  allowed: Set<string>,
+): string {
+  requireAuth(context);
+  const role = (context.auth!.token as any).role;
+  if (!role || !allowed.has(role)) {
+    throw new functions.https.HttpsError("permission-denied", "Insufficient privileges.");
+  }
+  return role;
+}
+
+function validatePdfUrl(url: unknown): URL {
+  if (typeof url !== "string" || url.length === 0 || url.length > 2048) {
+    throw new functions.https.HttpsError("invalid-argument", "Invalid pdfUrl.");
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new functions.https.HttpsError("invalid-argument", "Malformed pdfUrl.");
+  }
+  if (parsed.protocol !== "https:") {
+    throw new functions.https.HttpsError("invalid-argument", "pdfUrl must be https.");
+  }
+  const host = parsed.hostname;
+  const allowed = ALLOWED_PDF_HOSTS.some((h) => host === h || host.endsWith("." + h));
+  if (!allowed) {
+    throw new functions.https.HttpsError("invalid-argument", "pdfUrl host not allowed.");
+  }
+  return parsed;
+}
+
+async function safeFetchPdfText(pdfUrl: string): Promise<string> {
+  validatePdfUrl(pdfUrl);
+  const response = await axios.get(pdfUrl, {
+    responseType: "arraybuffer",
+    timeout: PDF_FETCH_TIMEOUT_MS,
+    maxContentLength: MAX_PDF_BYTES,
+    maxBodyLength: MAX_PDF_BYTES,
+    maxRedirects: 2,
+  });
+  const buffer = Buffer.from(response.data);
+  const pdfData = await pdf(buffer);
+  return (pdfData.text || "").replace(/\r?\n|\r/g, " ").slice(0, 40_000);
+}
+
+function resolveModel(requested: unknown, hasImage: boolean): string {
+  if (hasImage) return "gpt-4o-mini"; // vision-capable, cost-capped
+  if (typeof requested === "string" && ALLOWED_OPENAI_MODELS.has(requested)) {
+    return requested;
+  }
+  return "gpt-4o-mini";
+}
+
+function safeJsonParse<T = any>(raw: string, label: string): T {
+  try {
+    return JSON.parse(raw) as T;
+  } catch (err) {
+    console.error(`[${label}] JSON parse failed. Raw (first 500):`, raw.slice(0, 500));
+    throw new functions.https.HttpsError(
+      "internal",
+      "AI returned invalid JSON. Please retry.",
+    );
+  }
+}
+
+
+// ── Original tutor function ──────────────────────────────────────────────────
 export const getParentAITutor = functions
   .runWith({ secrets: [openaiApiKey], timeoutSeconds: 60, memory: "512MB" })
   .https.onCall(async (data, context) => {
-    try {
-        const { pdfUrl, title, description, question, type, topic, target_class, students_count } = data;
-        const openai = new OpenAI({ apiKey: openaiApiKey.value() });
+    // Auth + role gate (CRITICAL fix — was missing entirely).
+    requireRole(context, ALLOWED_ROLES);
 
-        console.log("AI Request Type:", type || "tutor");
+    const {
+      pdfUrl,
+      title,
+      description,
+      question,
+      type,
+      topic,
+      target_class,
+      students_count,
+    } = data || {};
 
-        let pdfText = "";
-        if (pdfUrl) {
-            try {
-                const response = await axios.get(pdfUrl, { responseType: 'arraybuffer' });
-                const buffer = Buffer.from(response.data);
-                const pdfData = await pdf(buffer);
-                pdfText = pdfData.text.replace(/\r?\n|\r/g, " ");
-            } catch (err) {
-                console.warn("PDF scan failed, continuing with context only.");
-            }
-        }
-
-        let systemPrompt = "You are a friendly AI Tutor for Edullent.";
-        let userPrompt = `Context: ${description}\nText: ${pdfText}\nQuery: ${question}`;
-
-        if (type === "calibration") {
-            systemPrompt = "You are an expert Curriculum Designer for Edullent.";
-            userPrompt = `Generate a calibrated assignment for Class: ${target_class} (${students_count} students) on Topic: ${topic || title}. Return JSON with: generated_assignment { title, description }.`;
-        }
-
-        const completion = await openai.chat.completions.create({
-            model: "gpt-4o-mini",
-            messages: [
-                { role: "system", content: systemPrompt },
-                { role: "user", content: userPrompt }
-            ],
-            response_format: { type: "json_object" }
-        });
-
-        return { status: "success", data: JSON.parse(completion.choices[0].message.content!) };
-
-    } catch (error: any) {
-        console.error("AI Function Error:", error);
-        return { status: "error", message: error.message };
+    // Input bounds
+    if (question && String(question).length > MAX_PROMPT_CHARS) {
+      throw new functions.https.HttpsError("invalid-argument", "question too long.");
     }
-});
+    if (description && String(description).length > MAX_PROMPT_CHARS) {
+      throw new functions.https.HttpsError("invalid-argument", "description too long.");
+    }
 
-// ── Universal AI proxy — replaces all client-side OpenAI calls ────────────────
-// Accepts: { prompt, systemPrompt?, jsonMode?, imageBase64?, model? }
-// Returns: { content: string } — caller parses JSON if needed
+    const openai = new OpenAI({ apiKey: openaiApiKey.value() });
+    console.log("AI Request Type:", type || "tutor");
+
+    let pdfText = "";
+    if (pdfUrl) {
+      try {
+        pdfText = await safeFetchPdfText(String(pdfUrl));
+      } catch (err: any) {
+        // Auth/SSRF errors are HttpsErrors — rethrow them as-is.
+        if (err instanceof functions.https.HttpsError) throw err;
+        console.warn("PDF scan failed, continuing with context only:", err?.message);
+      }
+    }
+
+    let systemPrompt = "You are a friendly AI Tutor for Edullent.";
+    let userPrompt =
+      `Context: ${description ?? ""}\nText: ${pdfText}\nQuery: ${question ?? ""}`;
+
+    if (type === "calibration") {
+      systemPrompt = "You are an expert Curriculum Designer for Edullent.";
+      userPrompt =
+        `Generate a calibrated assignment for Class: ${target_class} ` +
+        `(${students_count} students) on Topic: ${topic || title}. ` +
+        `Return JSON with: generated_assignment { title, description }.`;
+    }
+
+    try {
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        response_format: { type: "json_object" },
+        max_tokens: 1500,
+      });
+      const raw = completion.choices[0].message.content ?? "";
+      return { status: "success", data: safeJsonParse(raw, "getParentAITutor") };
+    } catch (error: any) {
+      console.error("getParentAITutor error:", error);
+      throw new functions.https.HttpsError("internal", "AI call failed.");
+    }
+  });
+
+
+// ── Universal AI proxy ───────────────────────────────────────────────────────
 export const parentAIProxy = functions
   .runWith({ secrets: [openaiApiKey], timeoutSeconds: 60, memory: "512MB" })
   .https.onCall(async (data, context) => {
-    // Auth gate — only logged-in parents can call
-    if (!context.auth) {
-      throw new functions.https.HttpsError("unauthenticated", "Login required.");
-    }
+    requireRole(context, ALLOWED_ROLES);
 
     const openai = new OpenAI({ apiKey: openaiApiKey.value() });
 
@@ -78,16 +192,32 @@ export const parentAIProxy = functions
       jsonMode = true,
       imageBase64,
       model,
-    } = data;
+    } = data || {};
 
-    if (!prompt) {
+    if (typeof prompt !== "string" || prompt.length === 0) {
       throw new functions.https.HttpsError("invalid-argument", "prompt is required.");
     }
+    if (prompt.length > MAX_PROMPT_CHARS) {
+      throw new functions.https.HttpsError("invalid-argument", "prompt too long.");
+    }
+    if (typeof systemPrompt !== "string" || systemPrompt.length > MAX_PROMPT_CHARS) {
+      throw new functions.https.HttpsError("invalid-argument", "systemPrompt too long.");
+    }
+    if (imageBase64 !== undefined) {
+      if (typeof imageBase64 !== "string") {
+        throw new functions.https.HttpsError("invalid-argument", "imageBase64 must be a string.");
+      }
+      if (imageBase64.length > MAX_IMAGE_B64_BYTES) {
+        throw new functions.https.HttpsError("invalid-argument", "image too large.");
+      }
+    }
+
+    const hasImage = !!imageBase64;
+    const resolvedModel = resolveModel(model, hasImage);
 
     try {
       const messages: any[] = [{ role: "system", content: systemPrompt }];
-
-      if (imageBase64) {
+      if (hasImage) {
         messages.push({
           role: "user",
           content: [
@@ -99,39 +229,36 @@ export const parentAIProxy = functions
         messages.push({ role: "user", content: prompt });
       }
 
-      const resolvedModel = imageBase64 ? "gpt-4o" : (model || "gpt-4o-mini");
-
       const completion = await openai.chat.completions.create({
         model: resolvedModel,
         messages,
         max_tokens: 1500,
-        ...(jsonMode && !imageBase64 ? { response_format: { type: "json_object" } } : {}),
+        ...(jsonMode && !hasImage ? { response_format: { type: "json_object" } } : {}),
       });
 
       const content = completion.choices[0]?.message?.content ?? "";
       return { content };
-
     } catch (error: any) {
       console.error("parentAIProxy error:", error);
-      throw new functions.https.HttpsError("internal", error.message || "AI call failed");
+      throw new functions.https.HttpsError("internal", "AI call failed.");
     }
   });
 
+
 // ─── syncUserClaims ───────────────────────────────────────────────────────────
 // Looks up the caller's email across role collections and writes
-// Firebase custom claims { schoolId, role, branchId } to the ID token.
-// Frontend must call `auth.currentUser.getIdToken(true)` afterwards to
-// force-refresh the token so Firestore rules see the new claims.
+// Firebase custom claims { schoolId, role, branchId, schoolIds? } to the
+// ID token. Frontend must call `auth.currentUser.getIdToken(true)` after.
+//
+// For parents with kids in multiple schools, schoolIds (array) is also set
+// and the frontend can pass { schoolId: <chosen> } to pick one.
 // ─────────────────────────────────────────────────────────────────────────────
 export const syncUserClaims = functions
   .runWith({ timeoutSeconds: 30, memory: "256MB" })
-  .https.onCall(async (_data, context) => {
-    if (!context.auth) {
-      throw new functions.https.HttpsError("unauthenticated", "Login required.");
-    }
-
-    const uid = context.auth.uid;
-    const email = (context.auth.token.email || "").toLowerCase();
+  .https.onCall(async (data, context) => {
+    requireAuth(context);
+    const uid = context.auth!.uid;
+    const email = (context.auth!.token.email || "").toLowerCase();
     if (!email) {
       throw new functions.https.HttpsError("failed-precondition", "No email on token.");
     }
@@ -163,7 +290,6 @@ export const syncUserClaims = functions
     }
 
     // 3) Teacher — pick best record if same email exists in multiple schools.
-    //    Priority: isPrimarySchool flag → Active/Invited status → most recent activation.
     const teacherSnap = await db.collection("teachers")
       .where("email", "==", email).get();
     if (!teacherSnap.empty) {
@@ -201,40 +327,58 @@ export const syncUserClaims = functions
       return { role: "data_entry", schoolId: d.schoolId || null };
     }
 
-    // 5) Parent — matches a student record via parentEmail or email
-    let parentSnap = await db.collection("students")
-      .where("parentEmail", "==", email).limit(1).get();
-    if (parentSnap.empty) {
-      parentSnap = await db.collection("students")
-        .where("email", "==", email).limit(1).get();
-    }
-    if (!parentSnap.empty) {
-      const d = parentSnap.docs[0].data();
-      await auth.setCustomUserClaims(uid, {
-        schoolId: d.schoolId,
-        role: "parent",
-        branchId: d.branchId || null,
+    // 5) Parent — may have kids in multiple schools. Collect ALL matching
+    //    student records. Active school = caller-chosen (data.schoolId) if
+    //    valid, otherwise the first by createdAt.
+    const [byParentEmail, byStudentEmail] = await Promise.all([
+      db.collection("students").where("parentEmail", "==", email).get(),
+      db.collection("students").where("email", "==", email).get(),
+    ]);
+    const seen = new Set<string>();
+    const candidates: any[] = [];
+    for (const snap of [byParentEmail, byStudentEmail]) {
+      snap.docs.forEach((doc) => {
+        if (seen.has(doc.id)) return;
+        seen.add(doc.id);
+        candidates.push(doc.data());
       });
-      return { role: "parent", schoolId: d.schoolId, branchId: d.branchId || null };
+    }
+    if (candidates.length > 0) {
+      const schoolIds = Array.from(new Set(candidates.map((c) => c.schoolId).filter(Boolean)));
+      const requestedSchoolId =
+        typeof (data as any)?.schoolId === "string" ? (data as any).schoolId : null;
+      const activeSchoolId =
+        requestedSchoolId && schoolIds.includes(requestedSchoolId)
+          ? requestedSchoolId
+          : schoolIds[0];
+      const activeRecord = candidates.find((c) => c.schoolId === activeSchoolId) || candidates[0];
+
+      await auth.setCustomUserClaims(uid, {
+        schoolId: activeSchoolId,
+        schoolIds,
+        role: "parent",
+        branchId: activeRecord.branchId || null,
+      });
+      return {
+        role: "parent",
+        schoolId: activeSchoolId,
+        schoolIds,
+        branchId: activeRecord.branchId || null,
+      };
     }
 
-    // No role found — clear claims so stale ones don't leak
+    // No role found — clear claims so stale ones don't leak.
     await auth.setCustomUserClaims(uid, null);
     throw new functions.https.HttpsError(
       "permission-denied",
-      "No role found for this account. Contact your school administrator."
+      "No role found for this account. Contact your school administrator.",
     );
   });
 
+
 // ─── branchId schema validator ────────────────────────────────────────────────
-// Tenant-scoped collections MUST carry both `schoolId` and `branchId`.
-// This onWrite trigger:
-//   1. Rejects creates/updates that drop schoolId
-//   2. Auto-fills missing branchId by walking the enrollment / teacher chain
-//   3. Logs the doc to `audit_logs/branchid_violations` if it can't be inferred
-//
-// Collections enforced: students, attendance, results, test_scores,
-//                       gradebook_scores, fees, incidents, submissions
+// Rejects tenant docs missing schoolId by QUARANTINING (not deleting).
+// Auto-infers missing branchId by walking the enrollment / teacher chain.
 // ─────────────────────────────────────────────────────────────────────────────
 const ENFORCED_COLLECTIONS = [
   "students",
@@ -251,10 +395,8 @@ async function inferBranchId(
   data: any,
   db: admin.firestore.Firestore,
 ): Promise<string | null> {
-  // 1) Direct field already present
   if (data.branchId) return data.branchId as string;
 
-  // 2) Walk: studentId → enrollments → teacherId → teacher.branchId
   if (data.studentId) {
     const enrSnap = await db.collection("enrollments")
       .where("studentId", "==", data.studentId)
@@ -270,7 +412,6 @@ async function inferBranchId(
     }
   }
 
-  // 3) For teacher-authored docs (assignments, tests): teacherId → teacher.branchId
   if (data.teacherId) {
     const teach = await db.collection("teachers").doc(data.teacherId).get();
     const tBranch = teach.data()?.branchId;
@@ -280,8 +421,6 @@ async function inferBranchId(
   return null;
 }
 
-// Build one trigger per enforced collection — Cloud Functions v1 needs a
-// concrete document path; wildcards like `{collection}/{id}` aren't allowed.
 ENFORCED_COLLECTIONS.forEach((coll) => {
   exports[`enforceBranchId_${coll}`] = functions.firestore
     .document(`${coll}/{docId}`)
@@ -290,7 +429,10 @@ ENFORCED_COLLECTIONS.forEach((coll) => {
       const after = change.after.exists ? change.after.data() : null;
       if (!after) return null; // delete — nothing to validate
 
-      // schoolId is mandatory — log + delete the doc if missing
+      // Already quarantined — don't recurse.
+      if (after._quarantined === true) return null;
+
+      // schoolId missing — QUARANTINE (do not delete — prevents silent data loss).
       if (!after.schoolId) {
         await db.collection("audit_logs").add({
           type: "schemaViolation",
@@ -300,9 +442,13 @@ ENFORCED_COLLECTIONS.forEach((coll) => {
           uid: "system",
           reason: "missing schoolId",
           payload: after,
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          ts: admin.firestore.FieldValue.serverTimestamp(),
         });
-        await change.after.ref.delete();
+        await change.after.ref.update({
+          _quarantined: true,
+          _quarantineReason: "missing schoolId",
+          _quarantinedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
         return null;
       }
 
@@ -325,7 +471,7 @@ ENFORCED_COLLECTIONS.forEach((coll) => {
           uid: "system",
           reason: "missing branchId — could not infer",
           payload: after,
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          ts: admin.firestore.FieldValue.serverTimestamp(),
         });
       }
 
@@ -333,20 +479,8 @@ ENFORCED_COLLECTIONS.forEach((coll) => {
     });
 });
 
-// ─── Audit logging — sensitive collection writes ──────────────────────────────
-// Captures who-changed-what for compliance + forensics. Append-only.
-// Avoids logging high-volume collections (attendance, test_scores) to control cost.
-//
-// Audit log shape:
-//   {
-//     uid, schoolId, role, collection, docId,
-//     action: 'create' | 'update' | 'delete',
-//     changedFields: string[],   // for updates
-//     before:  {...} | null,     // pre-state (truncated to 1KB)
-//     after:   {...} | null,     // post-state (truncated to 1KB)
-//     ts: serverTimestamp()
-//   }
-// ─────────────────────────────────────────────────────────────────────────────
+
+// ─── Audit logging ────────────────────────────────────────────────────────────
 const AUDITED_COLLECTIONS = [
   "principals",
   "teachers",
@@ -360,11 +494,12 @@ const AUDITED_COLLECTIONS = [
   "access_requests",
 ];
 
-// Truncate large payloads to keep audit log entries small + cheap.
+// Truncate large payloads to keep audit entries small. Uses UTF-8 bytes,
+// not string length (fixed: multi-byte chars no longer miscounted).
 function truncatePayload(obj: any, maxBytes = 1024): any {
   if (!obj) return null;
   const json = JSON.stringify(obj);
-  if (json.length <= maxBytes) return obj;
+  if (Buffer.byteLength(json, "utf8") <= maxBytes) return obj;
   return { _truncated: true, preview: json.slice(0, maxBytes) };
 }
 
@@ -373,221 +508,11 @@ function diffFields(before: any, after: any): string[] {
   const all = new Set([...Object.keys(before), ...Object.keys(after)]);
   const changed: string[] = [];
   for (const k of all) {
-    if (k.startsWith("_")) continue; // skip internal fields
+    if (k.startsWith("_")) continue;
     if (JSON.stringify(before[k]) !== JSON.stringify(after[k])) changed.push(k);
   }
   return changed;
 }
-
-// ─── aggregateSchoolStats ─────────────────────────────────────────────────────
-// Server-side aggregation for the owner dashboard. Reads tenant-scoped
-// collections via Admin SDK (bypasses rules) and returns pre-computed branch
-// rollups so the client doesn't have to fetch 60K+ docs.
-//
-// Result is cached in `owner_stats_cache/{ownerUid}` for AGGREGATE_TTL_SECONDS
-// to keep latency low and Firestore reads cheap. Pass { force: true } to bypass.
-// ─────────────────────────────────────────────────────────────────────────────
-const AGGREGATE_TTL_SECONDS = 5 * 60; // 5 minutes
-const ADMIN_PAGE_SIZE = 1000;
-const ADMIN_MAX_DOCS  = 200_000;
-
-async function adminFetchAll(
-  ref: FirebaseFirestore.Query,
-  label: string,
-): Promise<FirebaseFirestore.QueryDocumentSnapshot[]> {
-  const out: FirebaseFirestore.QueryDocumentSnapshot[] = [];
-  let cursor: FirebaseFirestore.QueryDocumentSnapshot | null = null;
-  while (out.length < ADMIN_MAX_DOCS) {
-    let q = ref.orderBy(admin.firestore.FieldPath.documentId()).limit(ADMIN_PAGE_SIZE);
-    if (cursor) q = q.startAfter(cursor);
-    const snap = await q.get();
-    if (snap.empty) break;
-    out.push(...snap.docs);
-    if (snap.docs.length < ADMIN_PAGE_SIZE) break;
-    cursor = snap.docs[snap.docs.length - 1];
-  }
-  if (out.length >= ADMIN_MAX_DOCS) {
-    console.warn(`[aggregate] ${label} hit ADMIN_MAX_DOCS — archive old data.`);
-  }
-  return out;
-}
-
-export const aggregateSchoolStats = functions
-  .runWith({ timeoutSeconds: 120, memory: "1GB" })
-  .https.onCall(async (data, context) => {
-    if (!context.auth) {
-      throw new functions.https.HttpsError("unauthenticated", "Login required.");
-    }
-    const role = (context.auth.token as any).role;
-    if (role !== "owner") {
-      throw new functions.https.HttpsError("permission-denied", "Owner only.");
-    }
-    const uid = context.auth.uid;
-    const force = !!data?.force;
-
-    const db = admin.firestore();
-
-    // Cache check
-    if (!force) {
-      const cacheRef = db.collection("owner_stats_cache").doc(uid);
-      const cached = await cacheRef.get();
-      const cd = cached.data();
-      if (cd && cd.computedAt && (Date.now() - cd.computedAt) / 1000 < AGGREGATE_TTL_SECONDS) {
-        return { ...cd, fromCache: true };
-      }
-    }
-
-    // Tenant-scoped reads (Admin SDK bypasses rules; we filter manually).
-    const [branchesDocs, studentsDocs, attendanceDocs, resultsDocs, testScoresDocs, feesDocs, teachersDocs, enrollmentsDocs] =
-      await Promise.all([
-        adminFetchAll(db.collection("schools").doc(uid).collection("branches"), `schools/${uid}/branches`),
-        adminFetchAll(db.collection("students").where("schoolId", "==", uid),    "students"),
-        adminFetchAll(db.collection("attendance").where("schoolId", "==", uid),  "attendance"),
-        adminFetchAll(db.collection("results").where("schoolId", "==", uid),     "results"),
-        adminFetchAll(db.collection("test_scores").where("schoolId", "==", uid), "test_scores"),
-        adminFetchAll(db.collection("fees").where("schoolId", "==", uid),        "fees"),
-        adminFetchAll(db.collection("teachers").where("schoolId", "==", uid),    "teachers"),
-        adminFetchAll(db.collection("enrollments").where("schoolId", "==", uid), "enrollments"),
-      ]);
-
-    // Branch metadata
-    const branches = branchesDocs.map((d, i) => ({
-      id: (d.data().branchId || d.id) as string,
-      name: (d.data().name || d.data().schoolName || `Branch ${i + 1}`) as string,
-      color: d.data().color || ["#1e3a8a", "#3b82f6", "#f59e0b", "#10b981", "#8b5cf6", "#ec4899"][i % 6],
-      established: String(d.data().established || d.data().year || "N/A"),
-      location: String(d.data().location || d.data().city || d.data().address || "—"),
-    }));
-
-    // Per-branch state
-    type BranchAgg = {
-      students: Set<string>;
-      att: { total: number; present: number };
-      res: { total: number; passed: number };
-      fees: { total: number; collected: number };
-      teachers: number;
-    };
-    const branchAgg = new Map<string, BranchAgg>();
-    branches.forEach((b) => branchAgg.set(b.id, {
-      students: new Set(),
-      att: { total: 0, present: 0 },
-      res: { total: 0, passed: 0 },
-      fees: { total: 0, collected: 0 },
-      teachers: 0,
-    }));
-
-    // Teachers per branch
-    const teacherBranch = new Map<string, string>();
-    teachersDocs.forEach((d) => {
-      const t = d.data();
-      const cid = t.branchId;
-      if (cid && branchAgg.has(cid)) {
-        branchAgg.get(cid)!.teachers++;
-        teacherBranch.set(d.id, cid);
-      }
-    });
-
-    // Student → branch (try direct branchId, else enrollment chain)
-    const studentBranch = new Map<string, string>();
-    const enrollmentBranch = new Map<string, string>();
-    enrollmentsDocs.forEach((d) => {
-      const e = d.data();
-      const sid = e.studentId as string;
-      if (!sid || enrollmentBranch.has(sid)) return;
-      const cid = (e.branchId as string) || teacherBranch.get(e.teacherId as string);
-      if (cid) enrollmentBranch.set(sid, cid);
-    });
-    studentsDocs.forEach((d) => {
-      const s = d.data();
-      const cid = (s.branchId as string) || enrollmentBranch.get(d.id);
-      if (cid && branchAgg.has(cid)) {
-        branchAgg.get(cid)!.students.add(d.id);
-        studentBranch.set(d.id, cid);
-      }
-    });
-
-    // Attendance rollup
-    attendanceDocs.forEach((d) => {
-      const a = d.data();
-      const cid = studentBranch.get(a.studentId as string);
-      if (!cid) return;
-      const ag = branchAgg.get(cid)!;
-      ag.att.total++;
-      if (String(a.status ?? "").toLowerCase() === "present") ag.att.present++;
-    });
-
-    // Results + test scores
-    const tallyResult = (r: any) => {
-      const cid = studentBranch.get(r.studentId as string);
-      if (!cid) return;
-      const ag = branchAgg.get(cid)!;
-      ag.res.total++;
-      if ((r.percentage || r.score || 0) >= 50) ag.res.passed++;
-    };
-    resultsDocs.forEach((d) => tallyResult(d.data()));
-    testScoresDocs.forEach((d) => tallyResult(d.data()));
-
-    // Fees
-    feesDocs.forEach((d) => {
-      const f = d.data();
-      const cid = studentBranch.get(f.studentId as string);
-      if (!cid) return;
-      const ag = branchAgg.get(cid)!;
-      const amt  = f.amount || f.totalAmount || f.feeAmount || 0;
-      const coll = f.paidAmount || f.collectedAmount || (f.status === "paid" ? amt : 0);
-      ag.fees.total += amt;
-      ag.fees.collected += coll;
-    });
-
-    // Final per-branch numbers
-    const branchStats = branches.map((b) => {
-      const ag = branchAgg.get(b.id)!;
-      const attPct = ag.att.total ? Math.round((ag.att.present / ag.att.total) * 100) : 0;
-      const passRate = ag.res.total ? Math.round((ag.res.passed / ag.res.total) * 100) : 0;
-      const feeColl = ag.fees.total ? Math.round((ag.fees.collected / ag.fees.total) * 100) : 0;
-      const ahi = Math.round(attPct * 0.4 + passRate * 0.4 + feeColl * 0.2);
-      return {
-        ...b,
-        students: ag.students.size,
-        teachers: ag.teachers,
-        attendance: attPct,
-        passRate,
-        feeCollection: feeColl,
-        ahi,
-        feesCollected: ag.fees.collected,
-        feesTotal: ag.fees.total,
-      };
-    });
-
-    // School-wide rollups
-    const totalStudents = branchStats.reduce((s, b) => s + b.students, 0);
-    const totalTeachers = branchStats.reduce((s, b) => s + b.teachers, 0);
-    const avgAttendance = branchStats.length
-      ? Math.round(branchStats.reduce((s, b) => s + b.attendance, 0) / branchStats.length)
-      : 0;
-    const avgPassRate = branchStats.length
-      ? Math.round(branchStats.reduce((s, b) => s + b.passRate, 0) / branchStats.length)
-      : 0;
-    const avgAhi = branchStats.length
-      ? Math.round(branchStats.reduce((s, b) => s + b.ahi, 0) / branchStats.length)
-      : 0;
-
-    const result = {
-      branches: branchStats,
-      totals: { totalStudents, totalTeachers, avgAttendance, avgPassRate, avgAhi },
-      computedAt: Date.now(),
-      fromCache: false,
-    };
-
-    // Write to cache (best-effort — don't fail the call if cache write fails)
-    try {
-      await db.collection("owner_stats_cache").doc(uid).set(result);
-    } catch (err) {
-      console.warn("[aggregate] cache write failed:", err);
-    }
-
-    return result;
-  });
 
 AUDITED_COLLECTIONS.forEach((coll) => {
   exports[`auditLog_${coll}`] = functions.firestore
@@ -597,7 +522,6 @@ AUDITED_COLLECTIONS.forEach((coll) => {
       const before = change.before.exists ? change.before.data() : null;
       const after  = change.after.exists  ? change.after.data()  : null;
 
-      // Resolve actor — prefer the doc's lastModifiedBy/uid field, else "system"
       const actorUid =
         (after?._lastModifiedBy as string) ||
         (before?._lastModifiedBy as string) ||
@@ -611,7 +535,6 @@ AUDITED_COLLECTIONS.forEach((coll) => {
 
       const changedFields = action === "update" ? diffFields(before, after) : [];
 
-      // Skip pure metadata-only updates (lastActive timestamp, etc.) to cut noise.
       const NOISE_FIELDS = new Set([
         "lastActive", "lastLoginAt", "_lastModifiedBy",
         "_branchIdInferredAt", "_branchIdBackfilledAt",
@@ -634,3 +557,239 @@ AUDITED_COLLECTIONS.forEach((coll) => {
       return null;
     });
 });
+
+
+// ─── aggregateSchoolStats ─────────────────────────────────────────────────────
+// Streams docs through reducers — no full materialisation in RAM.
+// Sequential scans to cap peak memory.
+// ─────────────────────────────────────────────────────────────────────────────
+const AGGREGATE_TTL_SECONDS = 5 * 60;
+const ADMIN_PAGE_SIZE = 1000;
+const ADMIN_MAX_DOCS  = 200_000;
+
+async function adminStream<T>(
+  ref: FirebaseFirestore.Query,
+  onDoc: (d: FirebaseFirestore.QueryDocumentSnapshot) => void,
+  label: string,
+): Promise<number> {
+  let cursor: FirebaseFirestore.QueryDocumentSnapshot | null = null;
+  let count = 0;
+  while (count < ADMIN_MAX_DOCS) {
+    let q = ref.orderBy(admin.firestore.FieldPath.documentId()).limit(ADMIN_PAGE_SIZE);
+    if (cursor) q = q.startAfter(cursor);
+    const snap = await q.get();
+    if (snap.empty) break;
+    for (const d of snap.docs) {
+      onDoc(d);
+      count++;
+    }
+    if (snap.docs.length < ADMIN_PAGE_SIZE) break;
+    cursor = snap.docs[snap.docs.length - 1];
+  }
+  if (count >= ADMIN_MAX_DOCS) {
+    console.warn(`[aggregate] ${label} hit ADMIN_MAX_DOCS — archive old data.`);
+  }
+  return count;
+}
+
+export const aggregateSchoolStats = functions
+  .runWith({ timeoutSeconds: 120, memory: "1GB" })
+  .https.onCall(async (data, context) => {
+    requireRole(context, new Set(["owner"]));
+    const uid = context.auth!.uid;
+    const force = !!(data as any)?.force;
+
+    const db = admin.firestore();
+
+    // Cache check
+    if (!force) {
+      const cacheRef = db.collection("owner_stats_cache").doc(uid);
+      const cached = await cacheRef.get();
+      const cd = cached.data();
+      if (cd && cd.computedAt && (Date.now() - cd.computedAt) / 1000 < AGGREGATE_TTL_SECONDS) {
+        return { ...cd, fromCache: true };
+      }
+    }
+
+    type BranchAgg = {
+      students: Set<string>;
+      att: { total: number; present: number };
+      res: { total: number; passed: number };
+      fees: { total: number; collected: number };
+      teachers: number;
+    };
+
+    const branches: Array<{
+      id: string; name: string; color: string;
+      established: string; location: string;
+    }> = [];
+    const branchAgg = new Map<string, BranchAgg>();
+    const teacherBranch = new Map<string, string>();
+    const studentBranch = new Map<string, string>();
+    const enrollmentBranch = new Map<string, string>();
+    const palette = ["#1e3a8a", "#3b82f6", "#f59e0b", "#10b981", "#8b5cf6", "#ec4899"];
+
+    // 1) Branch metadata — small collection, stream once.
+    let bIdx = 0;
+    await adminStream(
+      db.collection("schools").doc(uid).collection("branches"),
+      (d) => {
+        const data = d.data();
+        const id = (data.branchId || d.id) as string;
+        branches.push({
+          id,
+          name: (data.name || data.schoolName || `Branch ${bIdx + 1}`) as string,
+          color: data.color || palette[bIdx % palette.length],
+          established: String(data.established || data.year || "N/A"),
+          location: String(data.location || data.city || data.address || "—"),
+        });
+        branchAgg.set(id, {
+          students: new Set(),
+          att: { total: 0, present: 0 },
+          res: { total: 0, passed: 0 },
+          fees: { total: 0, collected: 0 },
+          teachers: 0,
+        });
+        bIdx++;
+      },
+      `schools/${uid}/branches`,
+    );
+
+    // 2) Teachers — needed before students to resolve branch-by-teacher.
+    await adminStream(
+      db.collection("teachers").where("schoolId", "==", uid),
+      (d) => {
+        const t = d.data();
+        const cid = t.branchId;
+        if (cid && branchAgg.has(cid)) {
+          branchAgg.get(cid)!.teachers++;
+          teacherBranch.set(d.id, cid);
+        }
+      },
+      "teachers",
+    );
+
+    // 3) Enrollments — resolves student→branch when student doc lacks branchId.
+    await adminStream(
+      db.collection("enrollments").where("schoolId", "==", uid),
+      (d) => {
+        const e = d.data();
+        const sid = e.studentId as string;
+        if (!sid || enrollmentBranch.has(sid)) return;
+        const cid = (e.branchId as string) || teacherBranch.get(e.teacherId as string);
+        if (cid) enrollmentBranch.set(sid, cid);
+      },
+      "enrollments",
+    );
+
+    // 4) Students — build studentBranch map.
+    await adminStream(
+      db.collection("students").where("schoolId", "==", uid),
+      (d) => {
+        const s = d.data();
+        const cid = (s.branchId as string) || enrollmentBranch.get(d.id);
+        if (cid && branchAgg.has(cid)) {
+          branchAgg.get(cid)!.students.add(d.id);
+          studentBranch.set(d.id, cid);
+        }
+      },
+      "students",
+    );
+
+    // 5) Attendance rollup.
+    await adminStream(
+      db.collection("attendance").where("schoolId", "==", uid),
+      (d) => {
+        const a = d.data();
+        const cid = studentBranch.get(a.studentId as string);
+        if (!cid) return;
+        const ag = branchAgg.get(cid)!;
+        ag.att.total++;
+        if (String(a.status ?? "").toLowerCase() === "present") ag.att.present++;
+      },
+      "attendance",
+    );
+
+    // 6) Results + test scores — fixed falsy-coercion bug (score of 0).
+    const tallyResult = (r: any) => {
+      const cid = studentBranch.get(r.studentId as string);
+      if (!cid) return;
+      const pct = typeof r.percentage === "number" ? r.percentage
+                : typeof r.score === "number" ? r.score
+                : null;
+      if (pct === null) return;
+      const ag = branchAgg.get(cid)!;
+      ag.res.total++;
+      if (pct >= 50) ag.res.passed++;
+    };
+    await adminStream(
+      db.collection("results").where("schoolId", "==", uid),
+      (d) => tallyResult(d.data()),
+      "results",
+    );
+    await adminStream(
+      db.collection("test_scores").where("schoolId", "==", uid),
+      (d) => tallyResult(d.data()),
+      "test_scores",
+    );
+
+    // 7) Fees.
+    await adminStream(
+      db.collection("fees").where("schoolId", "==", uid),
+      (d) => {
+        const f = d.data();
+        const cid = studentBranch.get(f.studentId as string);
+        if (!cid) return;
+        const ag = branchAgg.get(cid)!;
+        const amt  = f.amount || f.totalAmount || f.feeAmount || 0;
+        const coll = f.paidAmount || f.collectedAmount || (f.status === "paid" ? amt : 0);
+        ag.fees.total += amt;
+        ag.fees.collected += coll;
+      },
+      "fees",
+    );
+
+    // Final per-branch numbers.
+    const branchStats = branches.map((b) => {
+      const ag = branchAgg.get(b.id)!;
+      const attPct = ag.att.total ? Math.round((ag.att.present / ag.att.total) * 100) : 0;
+      const passRate = ag.res.total ? Math.round((ag.res.passed / ag.res.total) * 100) : 0;
+      const feeColl = ag.fees.total ? Math.round((ag.fees.collected / ag.fees.total) * 100) : 0;
+      const ahi = Math.round(attPct * 0.4 + passRate * 0.4 + feeColl * 0.2);
+      return {
+        ...b,
+        students: ag.students.size,
+        teachers: ag.teachers,
+        attendance: attPct,
+        passRate,
+        feeCollection: feeColl,
+        ahi,
+        feesCollected: ag.fees.collected,
+        feesTotal: ag.fees.total,
+      };
+    });
+
+    const totalStudents = branchStats.reduce((s, b) => s + b.students, 0);
+    const totalTeachers = branchStats.reduce((s, b) => s + b.teachers, 0);
+    const avgAttendance = branchStats.length
+      ? Math.round(branchStats.reduce((s, b) => s + b.attendance, 0) / branchStats.length) : 0;
+    const avgPassRate = branchStats.length
+      ? Math.round(branchStats.reduce((s, b) => s + b.passRate, 0) / branchStats.length) : 0;
+    const avgAhi = branchStats.length
+      ? Math.round(branchStats.reduce((s, b) => s + b.ahi, 0) / branchStats.length) : 0;
+
+    const result = {
+      branches: branchStats,
+      totals: { totalStudents, totalTeachers, avgAttendance, avgPassRate, avgAhi },
+      computedAt: Date.now(),
+      fromCache: false,
+    };
+
+    try {
+      await db.collection("owner_stats_cache").doc(uid).set(result);
+    } catch (err) {
+      console.warn("[aggregate] cache write failed:", err);
+    }
+
+    return result;
+  });

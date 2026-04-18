@@ -45,13 +45,18 @@ const TimetablePage = () => {
     const fetchTimetable = async () => {
       try {
         const classId = studentData.classId;
-        if (!classId) {
+        const schoolId = studentData.schoolId;
+        if (!classId || !schoolId) {
           setLoading(false);
           return;
         }
 
         // Try timetable collection first
-        const tSnap = await getDocs(query(collection(db, "timetable"), where("classId", "==", classId)));
+        const tSnap = await getDocs(query(
+          collection(db, "timetable"),
+          where("schoolId", "==", schoolId),
+          where("classId", "==", classId),
+        ));
         if (!tSnap.empty) {
           const data = tSnap.docs.map(d => ({ id: d.id, ...d.data() }));
           setTimetable(data);
@@ -60,7 +65,11 @@ const TimetablePage = () => {
         }
 
         // Fallback: build from teaching_assignments (teachers + subjects per class)
-        const taSnap = await getDocs(query(collection(db, "teaching_assignments"), where("classId", "==", classId)));
+        const taSnap = await getDocs(query(
+          collection(db, "teaching_assignments"),
+          where("schoolId", "==", schoolId),
+          where("classId", "==", classId),
+        ));
         if (!taSnap.empty) {
           const teachers = taSnap.docs.map(d => d.data());
           // Build a simple view showing each teacher's subject

@@ -1,16 +1,19 @@
 rules_version = '2';
 
 // ═══════════════════════════════════════════════════════════════════════════
-// EDULLENT — Production Firebase Storage Rules
+// EDULLENT — Production Firebase Storage Rules (SECURE baseline)
 // ───────────────────────────────────────────────────────────────────────────
+// Hardened 2026-04-18 — closes cross-tenant read/delete on syllabi,
+// submissions, schools, profiles.
+//
 // Storage layout:
 //   syllabi/{schoolId}/{branchId}/{classId}/{titleSlug}/{timestamp}_{fileName}
-//     — Teacher uploads class documents (syllabus, notes, resources)
-//     — Read: any signed-in user in same school
-//     — Write: any signed-in user writing into their own schoolId
+//   submissions/{schoolId}/{studentId}/{assignmentId}/{fileName}
+//   schools/{schoolId}/** (logos, profile photos uploaded by owner)
+//   profiles/{userId}/{fileName}
 //
-// Deploy:
-//   firebase deploy --only storage
+// Tenant check uses the schoolId segment from the path, compared against the
+// caller's custom claim schoolId (set by syncUserClaims Cloud Function).
 // ═══════════════════════════════════════════════════════════════════════════
 
 service firebase.storage {
@@ -25,75 +28,117 @@ service firebase.storage {
       return request.auth.uid;
     }
 
+    function claimSchoolId() {
+      return request.auth.token.schoolId;
+    }
+
+    function claimRole() {
+      return request.auth.token.role;
+    }
+
+    function hasOwnerRole() {
+      return signedIn() && claimRole() == 'owner';
+    }
+
+    function hasStaffRole() {
+      return signedIn() && claimRole() in ['owner', 'principal', 'teacher', 'data_entry'];
+    }
+
+    function hasAdminRole() {
+      return signedIn() && claimRole() in ['owner', 'principal'];
+    }
+
+    // Caller's claimed school matches the {schoolId} segment of the path
+    function sameSchool(schoolId) {
+      return signedIn() && claimSchoolId() == schoolId;
+    }
+
     function isOwnerOf(schoolId) {
       return signedIn() && uid() == schoolId;
     }
 
-    // PDF-only + 50 MB cap
-    function isValidPdf() {
+    // File type / size guards
+    function isPdf() {
       return request.resource != null
           && request.resource.size < 50 * 1024 * 1024
           && request.resource.contentType == 'application/pdf';
     }
 
+    function isAllowedSubmissionType() {
+      return request.resource != null
+          && request.resource.size < 50 * 1024 * 1024
+          && request.resource.contentType in [
+               'application/pdf',
+               'image/jpeg', 'image/png', 'image/webp',
+               'application/msword',
+               'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+               'text/plain'
+             ];
+    }
+
+    function isImage() {
+      return request.resource != null
+          && request.resource.contentType.matches('image/(jpeg|png|webp|gif)');
+    }
+
+
     // ═════════════════════════════════════════════════════════════════════
-    // ── Syllabus / class documents ──────────────────────────────────────
-    //   Path: syllabi/{schoolId}/{branchId}/{classId}/{title}/{filename}
-    //   Read: any signed-in user (client-side Firestore rules enforce
-    //         cross-tenant isolation — only docs for your class are listed)
-    //   Write: signed-in + schoolId path segment must match a valid user
-    //   Delete: signed-in (creator or principal)
+    // ── Syllabus / class documents (teacher upload) ──────────────────────
+    //   Read: any signed-in user in same school.
+    //   Write: staff role in same school, PDF only, 50 MB cap.
+    //   Delete: staff role in same school.
     // ═════════════════════════════════════════════════════════════════════
     match /syllabi/{schoolId}/{branchId}/{classId}/{titleSlug}/{fileName} {
-      allow read: if signedIn();
-
-      // Write: PDF only + 50 MB cap + must be signed in
-      // (Firestore doc write is what enforces tenant isolation; storage
-      //  rules just validate file type + size at upload time)
-      allow write: if signedIn() && isValidPdf();
-
-      // Delete: signed-in user (creator or principal cleanup)
-      allow delete: if signedIn();
+      allow read:   if sameSchool(schoolId);
+      allow write:  if sameSchool(schoolId) && hasStaffRole() && isPdf();
+      allow delete: if sameSchool(schoolId) && hasStaffRole();
     }
 
 
     // ═════════════════════════════════════════════════════════════════════
-    // ── Assignment submissions (if used elsewhere) ──────────────────────
-    //   Keep existing permissive pattern if you already use /submissions/
+    // ── Assignment submissions ──────────────────────────────────────────
+    //   Read: signed-in same-school (students submit, teachers grade).
+    //   Write: same-school + allowed mime types + 50 MB cap.
+    //   Delete: staff role in same school, or the uploader themselves.
     // ═════════════════════════════════════════════════════════════════════
     match /submissions/{schoolId}/{allPaths=**} {
-      allow read: if signedIn();
-      allow write: if signedIn() && request.resource.size < 50 * 1024 * 1024;
-      allow delete: if signedIn();
+      allow read:   if sameSchool(schoolId);
+      allow write:  if sameSchool(schoolId) && isAllowedSubmissionType();
+      allow delete: if sameSchool(schoolId) && hasStaffRole();
     }
 
 
     // ═════════════════════════════════════════════════════════════════════
-    // ── Owner / school assets (logos, profile photos) ───────────────────
+    // ── Owner / school assets (logos, branding) ─────────────────────────
+    //   Read: any signed-in user in same school (logos shown in header).
+    //   Write/Delete: owner of that school only, 10 MB cap, images only.
     // ═════════════════════════════════════════════════════════════════════
     match /schools/{schoolId}/{allPaths=**} {
-      allow read: if signedIn();
-      allow write: if isOwnerOf(schoolId)
-                   && request.resource.size < 10 * 1024 * 1024;
+      allow read:   if sameSchool(schoolId);
+      allow write:  if isOwnerOf(schoolId)
+                    && request.resource.size < 10 * 1024 * 1024
+                    && isImage();
       allow delete: if isOwnerOf(schoolId);
     }
 
 
     // ═════════════════════════════════════════════════════════════════════
-    // ── Student / teacher / principal profile photos ────────────────────
+    // ── Profile photos ──────────────────────────────────────────────────
+    //   Read: signed-in users (profile photos are displayed in directories,
+    //         principals/teachers/parents need to see each other's avatars).
+    //   Write/Delete: only the owner of that profile.
     // ═════════════════════════════════════════════════════════════════════
     match /profiles/{userId}/{fileName} {
-      allow read: if signedIn();
-      allow write: if signedIn() && uid() == userId
-                   && request.resource.size < 5 * 1024 * 1024
-                   && request.resource.contentType.matches('image/.*');
+      allow read:   if signedIn();
+      allow write:  if signedIn() && uid() == userId
+                    && request.resource.size < 5 * 1024 * 1024
+                    && isImage();
       allow delete: if signedIn() && uid() == userId;
     }
 
 
     // ═════════════════════════════════════════════════════════════════════
     // ── CATCH-ALL — deny unknown paths ──────────────────────────────────
-    //   Any storage path NOT matching above is BLOCKED.
     // ═════════════════════════════════════════════════════════════════════
     match /{allPaths=**} {
       allow read, write: if false;

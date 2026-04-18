@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, Upload, Plus, Sparkles, Bell, FileText, Image as ImageIcon, MessageSquare, HardDrive, ChevronLeft, BarChart3 } from "lucide-react";
 import { useAuth } from "../lib/AuthContext";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { ParentAIController } from "../ai/controller/ai-controller";
 import { db } from "../lib/firebase";
 import {
@@ -102,6 +103,7 @@ const getStreak = (practiceDates: Set<string>) => {
 // ── Main component ────────────────────────────────────────────────────────────
 const AIPracticePage = () => {
   const { studentData } = useAuth();
+  const isMobile = useIsMobile();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // ── State ───────────────────────────────────────────────────────────────
@@ -349,7 +351,377 @@ const AIPracticePage = () => {
   // RENDER
   // ═══════════════════════════════════════════════════════════════════════════
 
-  // ── HOME VIEW ─────────────────────────────────────────────────────────────
+  /* ═══════════════════════════════════════════════════════════════
+     MOBILE — Navy + Cream Premium UI (HOME view)
+     ═══════════════════════════════════════════════════════════════ */
+  if (view === "home" && isMobile) {
+    // Navy/Cream theme constants
+    const NAVY = "#28396C", NAVY2 = "#1E2D57", NAVY3 = "#334880", NAVY4 = "#3D5494";
+    const CREAM = "#FDFAF4", CREAM2 = "#F5EFE2", CREAM3 = "#EDE5D4";
+    const GREEN = "#2EBC71", GREEN2 = "#1E9A5A";
+    const ORANGE = "#F59C2A", GOLD = "#F5C542";
+    const T1 = "#1A2340", T3 = "#8892B0", T4 = "#C0C8DC";
+    const SEP = "rgba(40,57,108,0.07)";
+    const NAVY_BDR = "rgba(40,57,108,0.13)";
+    const SH = "0 0 0 0.5px rgba(40,57,108,0.06), 0 2px 8px rgba(40,57,108,0.06), 0 10px 28px rgba(40,57,108,0.08)";
+    const SH_LG = "0 0 0 0.5px rgba(40,57,108,0.08), 0 4px 18px rgba(40,57,108,0.09), 0 24px 56px rgba(40,57,108,0.13)";
+
+    // Build flat heatmap cells from weeks (18 cols x 6 rows = 108 cells)
+    const flatDays = weeks.flat();
+    const recentDays = flatDays.slice(-108);
+    const todayStr = toLocalDateStr(new Date());
+
+    return (
+      <div className="animate-in fade-in duration-500 -mx-3 -mt-3 md:mx-0 md:mt-0"
+        style={{ fontFamily: "'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif", background: CREAM, minHeight: "100vh" }}>
+
+        {/* ── Header ── */}
+        <div className="flex items-center justify-between px-5 pt-3">
+          <div className="flex items-center gap-[6px]">
+            <div className="w-[6px] h-[6px] rounded-full animate-pulse" style={{ background: GREEN, boxShadow: "0 0 0 2px rgba(46,188,113,0.2)" }} />
+            <span className="text-[15px] font-bold tracking-[0.02em]" style={{ color: NAVY }}>EduIntellect</span>
+          </div>
+          <div className="flex items-center gap-[9px]">
+            <div className="w-[34px] h-[34px] rounded-full bg-white flex items-center justify-center relative"
+              style={{ boxShadow: "0 1px 4px rgba(40,57,108,0.1), 0 3px 10px rgba(40,57,108,0.06)" }}>
+              <Bell className="w-[17px] h-[17px]" style={{ color: "#4A5578" }} strokeWidth={1.8} />
+              <span className="absolute top-[1px] right-[1px] w-2 h-2 rounded-full" style={{ background: "#E85555", border: "1.5px solid white" }} />
+            </div>
+            <div className="w-[34px] h-[34px] rounded-full flex items-center justify-center text-[13px] font-bold text-white"
+              style={{ background: `linear-gradient(140deg, ${NAVY2}, ${NAVY4})`, boxShadow: "0 2px 8px rgba(40,57,108,0.28)" }}>
+              {studentName?.[0]?.toUpperCase() || "S"}
+            </div>
+          </div>
+        </div>
+
+        {/* ── AI Hero Card ── */}
+        <div className="mx-[18px] mt-[18px] rounded-[26px] p-[22px] pb-6 relative overflow-hidden"
+          style={{ background: `linear-gradient(140deg, ${NAVY} 0%, ${NAVY3} 60%, #4A5DB8 100%)`, boxShadow: SH_LG }}>
+          <div className="absolute -top-[50px] -right-[30px] w-[200px] h-[200px] rounded-full pointer-events-none"
+            style={{ background: "radial-gradient(circle, rgba(255,255,255,0.09) 0%, transparent 65%)" }} />
+          <div className="absolute -bottom-[40px] -left-[10px] w-[150px] h-[150px] rounded-full pointer-events-none"
+            style={{ background: "radial-gradient(circle, rgba(91,111,212,0.2) 0%, transparent 65%)" }} />
+          <div className="absolute inset-0 pointer-events-none" style={{
+            backgroundImage: "linear-gradient(rgba(255,255,255,0.016) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.016) 1px, transparent 1px)",
+            backgroundSize: "26px 26px"
+          }} />
+
+          <div className="relative z-10">
+            <div className="inline-flex items-center gap-[6px] px-3 py-[5px] rounded-full mb-4 text-[10px] font-bold text-white tracking-[0.04em]"
+              style={{ background: "rgba(255,255,255,0.14)", border: "0.5px solid rgba(255,255,255,0.22)", backdropFilter: "blur(8px)" }}>
+              <Sparkles className="w-3 h-3" />
+              AI POWERED · USP Feature
+            </div>
+            <h1 className="text-[30px] font-bold text-white leading-[1.12] mb-2" style={{ letterSpacing: "-0.8px" }}>
+              AI Practice<br />Exams
+            </h1>
+            <p className="text-[13px] font-normal leading-[1.5] mb-[22px]" style={{ color: "rgba(255,255,255,0.55)" }}>
+              Upload syllabus, take AI exams,<br />learn from mistakes.
+            </p>
+
+            {/* Stat chips */}
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { icon: "🔥", val: `${streak}d`, label: "Streak" },
+                { icon: <BarChart3 className="w-[22px] h-[22px]" style={{ color: "rgba(255,255,255,0.75)" }} strokeWidth={2} />, val: `${attempts.length}`, label: "Exams" },
+                { icon: "⭐", val: bestScore > 0 ? `${bestScore}%` : "—", label: "Best" },
+              ].map(({ icon, val, label }) => (
+                <div key={label} className="rounded-[18px] py-[14px] px-[10px] flex flex-col items-center gap-[6px] active:opacity-70 transition"
+                  style={{ background: "rgba(255,255,255,0.1)", border: "0.5px solid rgba(255,255,255,0.16)", backdropFilter: "blur(8px)" }}>
+                  <div className="text-[24px] leading-none flex items-center justify-center h-6">
+                    {typeof icon === "string" ? icon : icon}
+                  </div>
+                  <div className="text-[20px] font-bold text-white leading-none" style={{ letterSpacing: "-0.5px" }}>{val}</div>
+                  <div className="text-[9px] font-bold uppercase tracking-[0.1em]" style={{ color: "rgba(255,255,255,0.45)" }}>{label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* ── Streak Banner ── */}
+        <div className="mx-[18px] mt-3 flex items-center gap-[14px] rounded-[18px] px-[18px] py-[14px]"
+          style={{ background: "linear-gradient(135deg, rgba(245,197,66,0.08), rgba(245,197,66,0.04))", border: "0.5px solid rgba(245,197,66,0.2)" }}>
+          <div className="w-11 h-11 rounded-[14px] flex items-center justify-center text-[22px] shrink-0"
+            style={{ background: "rgba(245,197,66,0.12)", border: "0.5px solid rgba(245,197,66,0.22)" }}>
+            🔥
+          </div>
+          <div className="flex-1">
+            <div className="text-[15px] font-bold" style={{ color: T1, letterSpacing: "-0.2px" }}>Practice Streak</div>
+            <div className="text-[12px] mt-[2px]" style={{ color: T3 }}>
+              {streak > 0 ? `Keep the fire going!` : "Start today to build your streak!"}
+            </div>
+          </div>
+          <div className="text-[24px] font-bold shrink-0" style={{ color: GOLD, letterSpacing: "-0.5px" }}>{streak}d</div>
+        </div>
+
+        {/* ── Practice Calendar ── */}
+        <div className="mx-[18px] mt-4 bg-white rounded-[22px] px-5 py-[18px]" style={{ boxShadow: SH, border: "0.5px solid rgba(40,57,108,0.06)" }}>
+          <div className="mb-[6px]">
+            <div className="text-[16px] font-bold" style={{ color: T1, letterSpacing: "-0.3px" }}>Practice Calendar</div>
+            <div className="text-[12px] mt-[2px]" style={{ color: T3 }}>{practiceDates.size} days practiced this year</div>
+          </div>
+
+          {/* Heatmap 18×6 grid */}
+          <div className="grid gap-1 mt-4" style={{ gridTemplateColumns: "repeat(18, 1fr)" }}>
+            {recentDays.map((day, idx) => {
+              const dateStr = toLocalDateStr(day.date);
+              const isToday = dateStr === todayStr;
+              const isFuture = day.date > new Date();
+              let bg = CREAM3;
+              if (day.level > 0) bg = NAVY;
+              const cellStyle: React.CSSProperties = {
+                aspectRatio: "1",
+                borderRadius: 3,
+                background: isFuture ? "transparent" : bg,
+                opacity: isFuture ? 0.2 : 1,
+              };
+              if (isToday) {
+                cellStyle.boxShadow = `0 0 0 2px rgba(40,57,108,0.3), 0 0 0 4px rgba(40,57,108,0.1)`;
+                cellStyle.borderRadius = 4;
+                cellStyle.background = NAVY;
+              }
+              return <div key={idx} style={cellStyle} title={day.date.toLocaleDateString()} />;
+            })}
+          </div>
+
+          {/* Legend */}
+          <div className="flex items-center gap-[5px] mt-3 pt-3" style={{ borderTop: `0.5px solid ${SEP}` }}>
+            <span className="text-[10px] font-medium" style={{ color: T4 }}>Less</span>
+            <div className="flex gap-[3px]">
+              {[CREAM3, "rgba(40,57,108,0.15)", "rgba(40,57,108,0.3)", "rgba(40,57,108,0.5)", NAVY].map((c, i) => (
+                <div key={i} className="w-3 h-3 rounded-[3px]" style={{ background: c }} />
+              ))}
+            </div>
+            <span className="text-[10px] font-medium" style={{ color: T4 }}>More</span>
+          </div>
+        </div>
+
+        {/* ── New Practice Exam Button ── */}
+        <button onClick={() => setView("upload")}
+          className="mx-[18px] mt-4 w-[calc(100%-36px)] rounded-[18px] py-[17px] flex items-center justify-center gap-[9px] text-[15px] font-bold text-white active:scale-[0.97] transition-transform relative overflow-hidden"
+          style={{ background: `linear-gradient(135deg, ${NAVY}, ${NAVY2})`, boxShadow: "0 6px 24px rgba(40,57,108,0.28), 0 2px 8px rgba(0,0,0,0.1)", letterSpacing: "-0.1px" }}>
+          <div className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(135deg, rgba(255,255,255,0.1) 0%, transparent 55%)" }} />
+          <Plus className="relative z-10 w-[18px] h-[18px]" strokeWidth={2.2} />
+          <span className="relative z-10">New Practice Exam</span>
+        </button>
+
+        {/* ── Your Documents (if any) ── */}
+        {documents.length > 0 && (
+          <>
+            <div className="flex items-center gap-2 px-5 pt-[18px] text-[9px] font-bold uppercase tracking-[0.1em]" style={{ color: "rgba(40,57,108,0.35)" }}>
+              Your Documents
+              <div className="flex-1 h-[0.5px]" style={{ background: NAVY_BDR }} />
+            </div>
+            <div className="mx-[18px] mt-[10px] flex flex-col gap-[9px]">
+              {documents.slice(0, 3).map(doc => (
+                <div key={doc.id} onClick={() => useDocument(doc)}
+                  className="bg-white rounded-[18px] px-4 py-[14px] flex items-center gap-[13px] active:scale-[0.97] transition-transform cursor-pointer"
+                  style={{ boxShadow: SH, border: "0.5px solid rgba(40,57,108,0.06)" }}>
+                  <div className="w-[42px] h-[42px] rounded-[13px] flex items-center justify-center shrink-0"
+                    style={{ background: "rgba(91,111,212,0.10)", border: "0.5px solid rgba(91,111,212,0.20)" }}>
+                    <FileText className="w-5 h-5" style={{ color: "#5B6FD4" }} strokeWidth={2} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[14px] font-bold truncate" style={{ color: T1, letterSpacing: "-0.2px" }}>{doc.fileName}</div>
+                    <div className="text-[11px] mt-[2px]" style={{ color: T3 }}>{doc.pageCount || 0} pages · {doc.extractedTopics?.length || 0} topics</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        {/* ── Recent Exams ── */}
+        {attempts.length > 0 && (
+          <>
+            <div className="flex items-center gap-2 px-5 pt-[18px] text-[9px] font-bold uppercase tracking-[0.1em]" style={{ color: "rgba(40,57,108,0.35)" }}>
+              Recent Exams
+              <div className="flex-1 h-[0.5px]" style={{ background: NAVY_BDR }} />
+            </div>
+            <div className="mx-[18px] mt-[10px] flex flex-col gap-[9px]">
+              {attempts.slice(0, 5).map(a => {
+                const pct = a.percentage || 0;
+                const passed = pct >= 80;
+                const review = pct >= 50 && pct < 80;
+                const iconBg = passed ? "rgba(46,188,113,0.10)" : review ? "rgba(245,156,42,0.10)" : "rgba(232,85,85,0.10)";
+                const iconBdr = passed ? "rgba(46,188,113,0.20)" : review ? "rgba(245,156,42,0.20)" : "rgba(232,85,85,0.20)";
+                const iconColor = passed ? GREEN : review ? ORANGE : "#E85555";
+                const chipText = passed ? "Passed" : review ? "Review" : "Retry";
+                const pctColor = passed ? GREEN2 : review ? ORANGE : "#E85555";
+                return (
+                  <div key={a.id} className="bg-white rounded-[18px] px-4 py-[14px] flex items-center gap-[13px] active:scale-[0.97] transition-transform"
+                    style={{ boxShadow: SH, border: "0.5px solid rgba(40,57,108,0.06)" }}>
+                    <div className="w-[42px] h-[42px] rounded-[13px] flex items-center justify-center shrink-0"
+                      style={{ background: iconBg, border: `0.5px solid ${iconBdr}` }}>
+                      <BarChart3 className="w-5 h-5" style={{ color: iconColor }} strokeWidth={2} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[14px] font-bold truncate" style={{ color: T1, letterSpacing: "-0.2px" }}>{a.examTitle || a.topic || "Practice"}</div>
+                      <div className="text-[11px] mt-[2px]" style={{ color: T3 }}>
+                        {a.submittedAt?.toDate?.().toLocaleDateString(undefined, { month: "short", day: "numeric" }) || "—"} · {a.total || questionCount} questions
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-[3px]">
+                      <div className="text-[17px] font-bold" style={{ color: pctColor, letterSpacing: "-0.4px" }}>{pct}%</div>
+                      <div className="px-[9px] py-[3px] rounded-full text-[10px] font-bold"
+                        style={{ background: iconBg, color: iconColor, border: `0.5px solid ${iconBdr}` }}>
+                        {chipText}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+
+        {attempts.length === 0 && documents.length === 0 && (
+          <div className="mx-[18px] mt-5 mb-2 text-center py-6">
+            <p className="text-[13px]" style={{ color: T3 }}>No exams yet. Tap <strong style={{ color: NAVY }}>New Practice Exam</strong> to begin!</p>
+          </div>
+        )}
+
+        <div className="h-6" />
+      </div>
+    );
+  }
+
+  /* ═══════════════════════════════════════════════════════════════
+     MOBILE — Navy + Cream Premium UI (UPLOAD view)
+     ═══════════════════════════════════════════════════════════════ */
+  if (view === "upload" && isMobile) {
+    const NAVY = "#28396C", NAVY2 = "#1E2D57";
+    const CREAM = "#FDFAF4", CREAM2 = "#F5EFE2", CREAM3 = "#EDE5D4";
+    const T1 = "#1A2340", T3 = "#8892B0", T4 = "#C0C8DC";
+    const NAVY_BDR = "rgba(40,57,108,0.13)";
+    const SH = "0 0 0 0.5px rgba(40,57,108,0.06), 0 2px 8px rgba(40,57,108,0.06), 0 10px 28px rgba(40,57,108,0.08)";
+
+    return (
+      <div className="animate-in fade-in duration-500 -mx-3 -mt-3 md:mx-0 md:mt-0"
+        style={{ fontFamily: "'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif", background: CREAM, minHeight: "100vh" }}>
+
+        {/* Back */}
+        <div className="flex items-center gap-[6px] px-5 pt-[14px] w-fit cursor-pointer active:opacity-60" onClick={() => setView("home")}>
+          <ChevronLeft className="w-[18px] h-[18px]" style={{ color: NAVY }} strokeWidth={2.2} />
+          <span className="text-[14px] font-semibold" style={{ color: NAVY, letterSpacing: "-0.1px" }}>Back</span>
+        </div>
+
+        {/* Header */}
+        <div className="px-5 pt-[18px]">
+          <h2 className="text-[24px] font-bold" style={{ color: T1, letterSpacing: "-0.5px" }}>Upload Syllabus</h2>
+          <p className="text-[13px] mt-1 font-normal" style={{ color: T3 }}>Upload a PDF of your chapter, notes, or syllabus.</p>
+        </div>
+
+        {/* Drop Zone */}
+        <div
+          onDragOver={e => e.preventDefault()}
+          onDrop={handleDrop}
+          onClick={() => fileInputRef.current?.click()}
+          className="mx-[18px] mt-5 rounded-[24px] px-6 py-12 flex flex-col items-center gap-[14px] cursor-pointer active:scale-[0.98] transition-transform relative overflow-hidden"
+          style={{
+            border: "2px dashed rgba(40,57,108,0.22)",
+            background: "linear-gradient(135deg, rgba(40,57,108,0.025), rgba(40,57,108,0.01))",
+          }}>
+          <div className="absolute -top-10 left-1/2 -translate-x-1/2 w-[200px] h-[160px] pointer-events-none"
+            style={{ background: "radial-gradient(ellipse, rgba(40,57,108,0.04) 0%, transparent 70%)" }} />
+          {extracting ? (
+            <Loader2 className="w-10 h-10 animate-spin" style={{ color: NAVY }} />
+          ) : (
+            <div className="w-20 h-20 rounded-[26px] flex items-center justify-center mb-1"
+              style={{ background: `linear-gradient(140deg, ${CREAM2}, ${CREAM3})`, border: `0.5px solid ${NAVY_BDR}`, boxShadow: "0 4px 18px rgba(40,57,108,0.08), 0 0 0 6px rgba(40,57,108,0.04)" }}>
+              <Upload className="w-9 h-9" style={{ color: NAVY, opacity: 0.55 }} strokeWidth={1.6} />
+            </div>
+          )}
+          <div className="text-[16px] font-bold" style={{ color: NAVY, letterSpacing: "-0.2px" }}>
+            {extracting ? "Reading PDF..." : "Drop PDF here"}
+          </div>
+          <div className="text-[13px] text-center leading-[1.55]" style={{ color: T3 }}>or tap to browse your files</div>
+          <div className="text-[11px] font-semibold" style={{ color: T4 }}>Max 20 MB · PDF, DOC, DOCX</div>
+          <input ref={fileInputRef} type="file" accept="application/pdf" style={{ display: "none" }}
+            onChange={e => { if (e.target.files?.[0]) handleFileUpload(e.target.files[0]); }} />
+        </div>
+
+        {/* Upload Options Grid */}
+        <div className="grid grid-cols-2 gap-[10px] mx-[18px] mt-4">
+          {[
+            { icon: FileText, color: "#E85555", bg: "rgba(232,85,85,0.1)", bdr: "rgba(232,85,85,0.2)", label: "PDF File", sub: "Chapter or notes", action: () => fileInputRef.current?.click() },
+            { icon: ImageIcon, color: "#5B6FD4", bg: "rgba(91,111,212,0.10)", bdr: "rgba(91,111,212,0.20)", label: "Scan Photo", sub: "Camera or gallery", action: () => toast.info("Photo scan coming soon") },
+            { icon: MessageSquare, color: "#2EBC71", bg: "rgba(46,188,113,0.10)", bdr: "rgba(46,188,113,0.20)", label: "Type Topic", sub: "Enter manually", action: () => toast.info("Type topic coming soon") },
+            { icon: HardDrive, color: "#F59C2A", bg: "rgba(245,156,42,0.10)", bdr: "rgba(245,156,42,0.20)", label: "From Drive", sub: "Google Drive", action: () => toast.info("Google Drive coming soon") },
+          ].map(({ icon: Icon, color, bg, bdr, label, sub, action }) => (
+            <div key={label} onClick={action}
+              className="bg-white rounded-[18px] px-[14px] py-4 flex flex-col items-center gap-[9px] cursor-pointer active:scale-[0.95] transition-transform"
+              style={{ boxShadow: SH, border: "0.5px solid rgba(40,57,108,0.06)" }}>
+              <div className="w-[42px] h-[42px] rounded-[14px] flex items-center justify-center"
+                style={{ background: bg, border: `0.5px solid ${bdr}` }}>
+                <Icon className="w-[22px] h-[22px]" style={{ color }} strokeWidth={2} />
+              </div>
+              <div className="text-[13px] font-bold text-center" style={{ color: T1, letterSpacing: "-0.2px" }}>{label}</div>
+              <div className="text-[11px] text-center font-normal" style={{ color: T3 }}>{sub}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Format Pills */}
+        <div className="flex flex-wrap gap-[7px] mx-[18px] mt-4">
+          {[
+            { label: "PDF", color: "#E85555", bg: "rgba(232,85,85,0.1)", bdr: "rgba(232,85,85,0.2)" },
+            { label: "DOCX", color: "#5B6FD4", bg: "rgba(91,111,212,0.10)", bdr: "rgba(91,111,212,0.20)" },
+            { label: "JPG / PNG", color: "#1E9A5A", bg: "rgba(46,188,113,0.10)", bdr: "rgba(46,188,113,0.20)" },
+            { label: "TXT", color: NAVY, bg: "rgba(40,57,108,0.08)", bdr: NAVY_BDR },
+          ].map(({ label, color, bg, bdr }) => (
+            <div key={label} className="flex items-center gap-[5px] px-3 py-[6px] rounded-full text-[11px] font-bold"
+              style={{ background: bg, color, border: `0.5px solid ${bdr}` }}>
+              <FileText className="w-3 h-3" strokeWidth={2.2} />
+              {label}
+            </div>
+          ))}
+        </div>
+
+        {/* Previously uploaded docs */}
+        {documents.length > 0 && (
+          <>
+            <div className="px-5 pt-5 text-[10px] font-bold uppercase tracking-[0.1em]" style={{ color: "rgba(40,57,108,0.5)" }}>
+              Or use a saved document
+            </div>
+            <div className="mx-[18px] mt-[10px] flex flex-col gap-[9px]">
+              {documents.map(doc => (
+                <div key={doc.id} onClick={() => useDocument(doc)}
+                  className="bg-white rounded-[18px] px-4 py-[14px] flex items-center gap-[13px] cursor-pointer active:scale-[0.97] transition-transform"
+                  style={{ boxShadow: SH, border: "0.5px solid rgba(40,57,108,0.06)" }}>
+                  <div className="w-9 h-9 rounded-[11px] flex items-center justify-center shrink-0"
+                    style={{ background: "rgba(91,111,212,0.10)", border: "0.5px solid rgba(91,111,212,0.20)" }}>
+                    <FileText className="w-[18px] h-[18px]" style={{ color: "#5B6FD4" }} strokeWidth={2} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[13px] font-semibold truncate" style={{ color: T1 }}>{doc.fileName}</div>
+                    <div className="text-[11px] mt-[2px]" style={{ color: T3 }}>{doc.extractedTopics?.length || 0} topics extracted</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        {/* Upload Button */}
+        <button onClick={() => fileInputRef.current?.click()} disabled={extracting}
+          className="mx-[18px] mt-4 mb-4 w-[calc(100%-36px)] rounded-[18px] py-[17px] flex items-center justify-center gap-[9px] text-[15px] font-bold text-white active:scale-[0.97] disabled:opacity-60 transition-transform relative overflow-hidden"
+          style={{ background: `linear-gradient(135deg, ${NAVY}, ${NAVY2})`, boxShadow: "0 6px 24px rgba(40,57,108,0.28)" }}>
+          <div className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(135deg, rgba(255,255,255,0.1) 0%, transparent 55%)" }} />
+          {extracting ? (
+            <><Loader2 className="relative z-10 w-[18px] h-[18px] animate-spin" /><span className="relative z-10">Reading PDF...</span></>
+          ) : (
+            <><Upload className="relative z-10 w-[18px] h-[18px]" strokeWidth={2.2} /><span className="relative z-10">Upload &amp; Generate Exam</span></>
+          )}
+        </button>
+
+        <div className="h-4" />
+      </div>
+    );
+  }
+
+  // ── HOME VIEW (Desktop) ──────────────────────────────────────────────────
   if (view === "home") return (
     <div style={{ minHeight: "100vh", background: C.bg }}>
       {/* Hero */}

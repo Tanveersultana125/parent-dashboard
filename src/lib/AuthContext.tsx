@@ -7,7 +7,7 @@ import {
   User
 } from 'firebase/auth';
 import { auth, db } from './firebase';
-import { collection, query, where, getDocs, updateDoc, doc, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, getDocs, updateDoc, doc, onSnapshot, getDoc } from 'firebase/firestore';
 import { syncClaimsAndRefreshToken } from './syncClaims';
 
 interface AuthContextType {
@@ -36,11 +36,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setLoading(true);
       if (currentUser && currentUser.email) {
         try {
-          // Sync custom claims first so subsequent reads pass through Firestore rules.
-          await syncClaimsAndRefreshToken(currentUser);
+          // Sync custom claims first. The Cloud Function looks up the student
+          // across schools (Admin SDK bypasses rules) and returns the chosen
+          // schoolId. We then filter our client-side query by that schoolId so
+          // Firestore rules accept it.
+          const synced = await syncClaimsAndRefreshToken(currentUser);
+          const claimSchoolId = synced?.schoolId || null;
 
-          // Whitelist Check for Students/Parents
-          const q = query(collection(db, "students"), where("email", "==", currentUser.email.toLowerCase()));
+          // Whitelist Check for Students/Parents — must filter by schoolId
+          // so the list query passes the `inSameSchool()` rule.
+          const lowerEmail = currentUser.email.toLowerCase();
+          const q = claimSchoolId
+            ? query(
+                collection(db, "students"),
+                where("schoolId", "==", claimSchoolId),
+                where("email", "==", lowerEmail),
+              )
+            : query(collection(db, "students"), where("email", "==", lowerEmail));
           const querySnapshot = await getDocs(q);
 
           if (!querySnapshot.empty) {
@@ -65,11 +77,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                    updateDoc(doc(db, "students", studentId), { status: "Active" });
                 }
 
-                // Fetch Class Name
+                // Fetch Class Name — use getDoc (single doc get) instead of
+                // a list query so rules can resolve via the per-doc `get` rule.
                 let className = "General";
                 if (data.classId) {
-                   const classSnap = await getDocs(query(collection(db, "classes"), where("__name__", "==", data.classId)));
-                   if (!classSnap.empty) className = classSnap.docs[0].data().name || "General";
+                   const classDoc = await getDoc(doc(db, "classes", data.classId));
+                   if (classDoc.exists()) className = (classDoc.data() as any).name || "General";
                 }
 
                 setStudentData({ id: studentId, ...data, className });

@@ -1,21 +1,29 @@
 rules_version = '2';
 
 // ═══════════════════════════════════════════════════════════════════════════
-// EDULLENT — Production Firestore Rules (single database, all 4 dashboards)
+// EDULLENT — Production Firestore Rules (SECURE baseline)
 // ───────────────────────────────────────────────────────────────────────────
-// Tenant model:
-//   • Owner's Firebase uid  ==  schoolId  (each school is one Firebase user)
-//   • Every tenant-scoped doc carries `schoolId` field
-//   • Writes MUST include schoolId; updates CANNOT change it (immutable)
+// Hardened 2026-04-18 — closes 12 critical tenant-isolation + IDOR bugs.
 //
-// Public surfaces (intentional):
-//   • access_requests  — DEO onboarding (anyone can submit)
-//   • principals (email+schoolName read only) — school name lookup before login
-//   • parent_tokens    — shareable parent links (token is the auth)
+// Tenant model (unchanged):
+//   • Owner's Firebase uid  ==  schoolId
+//   • syncUserClaims Cloud Function writes { schoolId, role, branchId } onto
+//     the ID token. Rules read those claims via request.auth.token.
 //
-// Deploy:
-//   Firebase Console → Firestore → Rules tab → paste → Publish
-//   OR  firebase deploy --only firestore:rules
+// Public surfaces (intentional, tightened):
+//   • access_requests  — public create (whitelisted fields + size caps)
+//   • principals       — public get (lookup by id only, list denied)
+//   • parent_tokens    — public get (token IS the auth), list denied
+//
+// Roles recognised in claims: 'owner' | 'principal' | 'teacher'
+//                             'data_entry' | 'parent'
+//
+// ⚠ READ ENFORCEMENT NOTE:
+//   Most collections now require list queries to filter by
+//   schoolId == request.auth.token.schoolId. Client queries that used to run
+//   bare (e.g. `collection('students').get()`) MUST be updated to include
+//   `.where("schoolId", "==", schoolId)` before deploying these rules.
+//   See docs/client-query-migration.md for the full checklist.
 // ═══════════════════════════════════════════════════════════════════════════
 
 service cloud.firestore {
@@ -33,37 +41,65 @@ service cloud.firestore {
       return request.auth.uid;
     }
 
+    function claimSchoolId() {
+      return request.auth.token.schoolId;
+    }
+
+    function claimRole() {
+      return request.auth.token.role;
+    }
+
     function email() {
       return signedIn() && request.auth.token.email != null
         ? request.auth.token.email.lower()
         : '';
     }
 
-    // Owner's uid is the schoolId
+    // Caller is owner of the given school (owner's uid == schoolId)
     function isOwnerOf(schoolId) {
       return signedIn() && uid() == schoolId;
     }
 
-    // Existing doc's schoolId
-    function docSchool() {
-      return resource.data.schoolId;
+    // Caller's claims mark them as owner
+    function hasOwnerRole() {
+      return signedIn() && claimRole() == 'owner';
     }
 
-    // Incoming write's schoolId
-    function newDocSchool() {
-      return request.resource.data.schoolId;
+    function hasStaffRole() {
+      return signedIn() && claimRole() in ['owner', 'principal', 'teacher', 'data_entry'];
     }
 
-    // New doc must carry a schoolId
+    function hasAdminRole() {
+      return signedIn() && claimRole() in ['owner', 'principal'];
+    }
+
+    // Same-tenant check — caller's claim schoolId matches existing doc's schoolId
+    function inSameSchool() {
+      return signedIn()
+          && claimSchoolId() != null
+          && 'schoolId' in resource.data
+          && resource.data.schoolId == claimSchoolId();
+    }
+
+    // Write is addressed to caller's own school
+    function writingToOwnSchool() {
+      return signedIn()
+          && claimSchoolId() != null
+          && 'schoolId' in request.resource.data
+          && request.resource.data.schoolId == claimSchoolId();
+    }
+
+    // New doc must carry a non-empty schoolId
     function hasSchoolId() {
       return 'schoolId' in request.resource.data
           && request.resource.data.schoolId is string
-          && request.resource.data.schoolId.size() > 0;
+          && request.resource.data.schoolId.size() > 0
+          && request.resource.data.schoolId.size() < 128;
     }
 
-    // schoolId cannot be changed on update (tenant immutability)
+    // schoolId cannot change on update
     function schoolIdImmutable() {
-      return newDocSchool() == docSchool();
+      return request.resource.data.schoolId == resource.data.schoolId;
     }
 
     // Email match — for self-read/update patterns
@@ -74,21 +110,6 @@ service cloud.firestore {
           && resource.data.email.lower() == email();
     }
 
-    // Same-school check — caller either owns (uid==schoolId) or any signed-in
-    // user whose requests carry the matching schoolId field
-    function sameSchool() {
-      return signedIn()
-          && 'schoolId' in resource.data
-          && (isOwnerOf(docSchool()) || signedIn());
-    }
-
-    // Write going to same school as existing doc (for updates)
-    function writeToSameSchool() {
-      return signedIn()
-          && hasSchoolId()
-          && (resource == null || newDocSchool() == docSchool());
-    }
-
 
     // ═══════════════════════════════════════════════════════════════════════
     // ── 1. OWNER SUBTREE — /schools/{ownerUid}/** ────────────────────────
@@ -97,31 +118,39 @@ service cloud.firestore {
       allow read, write: if isOwnerOf(schoolId);
 
       match /{subPath=**} {
-        allow read, write: if isOwnerOf(schoolId);
+        // Owner reads everything under their tree.
+        // Principals/teachers of same school can read (e.g. branches list)
+        // but only owner can write.
+        allow read: if isOwnerOf(schoolId)
+                    || (signedIn() && claimSchoolId() == schoolId);
+        allow write: if isOwnerOf(schoolId);
       }
     }
 
 
     // ═══════════════════════════════════════════════════════════════════════
     // ── 2. PRINCIPALS ───────────────────────────────────────────────────
-    //     Public read is intentional: RequestAccess page needs school name
-    //     without requiring login.
+    //     Public GET only (RequestAccess page needs school name without
+    //     login). LIST denied to prevent directory enumeration.
     // ═══════════════════════════════════════════════════════════════════════
     match /principals/{docId} {
-      // Anyone can read — but client code should only expose schoolName/branch
-      allow read: if true;
+      allow get:  if true;
+      allow list: if signedIn() && (
+                    hasOwnerRole()
+                    || (claimSchoolId() != null
+                        && resource.data.schoolId == claimSchoolId())
+                  );
 
-      // Owner of the target school can manage
-      allow create: if signedIn() && hasSchoolId() && isOwnerOf(newDocSchool());
-      allow delete: if signedIn() && isOwnerOf(docSchool());
+      allow create: if signedIn() && hasSchoolId() && isOwnerOf(request.resource.data.schoolId);
+      allow delete: if isOwnerOf(resource.data.schoolId);
 
       // Update paths:
       //   1) Owner of the school
-      //   2) Principal updating their own record (login auto-activate)
-      //      — schoolId must NOT change
-      allow update: if signedIn() && (
-        isOwnerOf(docSchool())
-        || (ownsEmail() && schoolIdImmutable())
+      //   2) Principal updating their OWN record
+      //   schoolId immutable in both cases.
+      allow update: if signedIn() && schoolIdImmutable() && (
+        isOwnerOf(resource.data.schoolId)
+        || ownsEmail()
       );
     }
 
@@ -130,25 +159,29 @@ service cloud.firestore {
     // ── 3. TEACHERS ─────────────────────────────────────────────────────
     // ═══════════════════════════════════════════════════════════════════════
     match /teachers/{docId} {
-      // Any signed-in staff can browse teacher directory
-      allow read: if signedIn();
+      allow get:  if signedIn() && (
+                    hasOwnerRole()
+                    || inSameSchool()
+                    || ownsEmail()   // teacher can read own record pre-claims-sync
+                  );
+      allow list: if signedIn() && inSameSchool();
 
-      // Create: owner OR any signed-in user (principal bulk import) —
-      //         but schoolId must be present on incoming doc
-      allow create: if signedIn() && hasSchoolId();
+      // Create: only admins (owner/principal) of the target school.
+      allow create: if signedIn() && hasSchoolId() && writingToOwnSchool() && hasAdminRole();
 
       // Update:
       //   1) Owner of the school
-      //   2) Teacher updating their own record (status, lastLoginAt, isPrimarySchool)
-      //      — schoolId immutable
-      allow update: if signedIn() && (
-        isOwnerOf(docSchool())
-        || (ownsEmail() && schoolIdImmutable())
-        || schoolIdImmutable()   // principal of same school — any signed-in user in same school context
+      //   2) Principal of same school
+      //   3) Teacher updating own record (status, lastLoginAt, isPrimarySchool)
+      //   schoolId immutable in all cases.
+      allow update: if signedIn() && schoolIdImmutable() && (
+        isOwnerOf(resource.data.schoolId)
+        || (claimRole() == 'principal' && resource.data.schoolId == claimSchoolId())
+        || ownsEmail()
       );
 
       // Delete: only owner
-      allow delete: if signedIn() && isOwnerOf(docSchool());
+      allow delete: if isOwnerOf(resource.data.schoolId);
     }
 
 
@@ -156,10 +189,29 @@ service cloud.firestore {
     // ── 4. STUDENTS ─────────────────────────────────────────────────────
     // ═══════════════════════════════════════════════════════════════════════
     match /students/{docId} {
-      allow read: if signedIn();
-      allow create: if signedIn() && hasSchoolId();
-      allow update: if signedIn() && schoolIdImmutable();
-      allow delete: if signedIn() && isOwnerOf(docSchool());
+      // Parent reads their own child's doc by email lookup; staff reads
+      // any student in their school.
+      allow get:  if signedIn() && (
+                    hasOwnerRole()
+                    || inSameSchool()
+                    || ownsEmail()
+                    || ('parentEmail' in resource.data
+                        && resource.data.parentEmail is string
+                        && resource.data.parentEmail.lower() == email())
+                  );
+      allow list: if signedIn() && inSameSchool();
+
+      allow create: if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
+
+      // Update: staff in same school, or the student themselves
+      // (e.g. Invited → Active self-activation) with immutable schoolId.
+      allow update: if signedIn() && schoolIdImmutable() && (
+        (hasStaffRole() && resource.data.schoolId == claimSchoolId())
+        || ownsEmail()
+      );
+
+      allow delete: if isOwnerOf(resource.data.schoolId)
+                    || (claimRole() == 'principal' && resource.data.schoolId == claimSchoolId());
     }
 
 
@@ -167,56 +219,82 @@ service cloud.firestore {
     // ── 5. DATA ENTRY STAFF ─────────────────────────────────────────────
     // ═══════════════════════════════════════════════════════════════════════
     match /data_entry_staff/{docId} {
-      allow read: if signedIn();
-      allow create, update: if signedIn();
-      allow delete: if signedIn() && isOwnerOf(docSchool());
+      allow get:  if signedIn() && (hasOwnerRole() || inSameSchool() || ownsEmail());
+      allow list: if signedIn() && inSameSchool() && hasAdminRole();
+
+      // Only admins can mint DEO accounts, and only for their own school.
+      allow create: if signedIn() && hasSchoolId() && writingToOwnSchool() && hasAdminRole();
+      allow update: if signedIn() && schoolIdImmutable()
+                    && resource.data.schoolId == claimSchoolId()
+                    && (hasAdminRole() || ownsEmail());
+      allow delete: if isOwnerOf(resource.data.schoolId)
+                    || (claimRole() == 'principal' && resource.data.schoolId == claimSchoolId());
     }
 
 
     // ═══════════════════════════════════════════════════════════════════════
-    // ── 6. ACCESS REQUESTS — fully public intake ─────────────────────────
-    //     Any visitor can submit a request (no login needed).
-    //     Principal/owner reviews and promotes/rejects.
+    // ── 6. ACCESS REQUESTS — public intake, hardened ─────────────────────
+    //     Anyone can submit, but field whitelist + size caps prevent DoS.
     // ═══════════════════════════════════════════════════════════════════════
     match /access_requests/{docId} {
-      // Read: signed-in staff only
-      allow read: if signedIn();
+      allow get:  if signedIn() && (hasOwnerRole() || (claimSchoolId() != null
+                                  && resource.data.schoolId == claimSchoolId()));
+      allow list: if signedIn() && hasAdminRole()
+                  && (hasOwnerRole() || resource.data.schoolId == claimSchoolId());
 
-      // Create: ANYONE (public form) — but must include schoolId + requestedBy
-      allow create: if 'schoolId' in request.resource.data
-                    && request.resource.data.schoolId is string;
+      // Public create with strict schema validation.
+      allow create: if request.resource.data.keys().hasOnly([
+                        'schoolId','requestedBy','name','email','phone',
+                        'note','role','status','createdAt'
+                      ])
+                    && request.resource.data.schoolId is string
+                    && request.resource.data.schoolId.size() > 0
+                    && request.resource.data.schoolId.size() < 128
+                    && (!('email' in request.resource.data)
+                        || (request.resource.data.email is string
+                            && request.resource.data.email.size() < 200))
+                    && (!('note' in request.resource.data)
+                        || (request.resource.data.note is string
+                            && request.resource.data.note.size() < 2000))
+                    && (!('name' in request.resource.data)
+                        || (request.resource.data.name is string
+                            && request.resource.data.name.size() < 200));
 
-      // Update / delete: only signed-in (owner or principal processing the req)
-      allow update: if signedIn();
-      allow delete: if signedIn() && isOwnerOf(docSchool());
+      allow update: if signedIn() && hasAdminRole() && schoolIdImmutable()
+                    && (hasOwnerRole() || resource.data.schoolId == claimSchoolId());
+      allow delete: if isOwnerOf(resource.data.schoolId);
     }
 
 
     // ═══════════════════════════════════════════════════════════════════════
     // ── 7. PARENT TOKENS — public-by-design share links ─────────────────
+    //     GET is public (token == auth). LIST is DENIED — no enumeration.
     // ═══════════════════════════════════════════════════════════════════════
     match /parent_tokens/{token} {
-      // Public read — token in URL IS the auth
-      allow read: if true;
+      allow get:  if true;
+      allow list: if false;
 
-      // Create/delete: signed-in staff only
-      allow create: if signedIn() && hasSchoolId();
+      allow create: if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
       allow update: if false;   // tokens are write-once
-      allow delete: if signedIn() && isOwnerOf(docSchool());
+      allow delete: if isOwnerOf(resource.data.schoolId)
+                    || (hasAdminRole() && resource.data.schoolId == claimSchoolId());
     }
 
 
     // ═══════════════════════════════════════════════════════════════════════
-    // ── 8. AUDIT LOGS — append-only, never mutate ──────────────────────
+    // ── 8. AUDIT LOGS — append-only, owner-only read ────────────────────
     // ═══════════════════════════════════════════════════════════════════════
     match /audit_logs/{logId} {
-      // Read: owner only (for compliance review)
-      allow read: if signedIn();
+      // Owner reads only their own school's audit trail.
+      allow get, list: if signedIn() && hasOwnerRole()
+                       && ('schoolId' in resource.data)
+                       && resource.data.schoolId == claimSchoolId();
 
-      // Create: any signed-in user or Cloud Function
-      allow create: if signedIn() || request.auth == null; // Cloud Functions bypass auth
+      // Only signed-in users can append. Cloud Functions use Admin SDK
+      // which bypasses rules entirely — no unauthenticated clause needed.
+      allow create: if signedIn();
 
-      // NO updates, NO deletes — immutable audit trail
+      // NO updates, NO deletes — immutable audit trail.
       allow update, delete: if false;
     }
 
@@ -225,10 +303,10 @@ service cloud.firestore {
     // ── 9. GRADING JOBS — queue-based AI grading ────────────────────────
     // ═══════════════════════════════════════════════════════════════════════
     match /grading_jobs/{jobId} {
-      allow read: if signedIn();
-      allow create: if signedIn() && hasSchoolId();
-      allow update: if signedIn() && schoolIdImmutable();
-      allow delete: if signedIn() && isOwnerOf(docSchool());
+      allow get, list: if signedIn() && inSameSchool();
+      allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
+      allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
+      allow delete:    if isOwnerOf(resource.data.schoolId);
     }
 
 
@@ -236,256 +314,263 @@ service cloud.firestore {
     // ── 10. OWNER STATS CACHE — written by Cloud Function ───────────────
     // ═══════════════════════════════════════════════════════════════════════
     match /owner_stats_cache/{ownerUid} {
-      allow read: if isOwnerOf(ownerUid);
+      allow read:  if isOwnerOf(ownerUid);
       allow write: if isOwnerOf(ownerUid);
     }
 
 
     // ═══════════════════════════════════════════════════════════════════════
     // ── 11. TENANT-SCOPED DATA COLLECTIONS ──────────────────────────────
-    //     Every collection below carries `schoolId` and follows the same
-    //     pattern. Explicit rules keep security auditable + performant.
+    //     Single reusable pattern below via inline rules. Every collection
+    //     enforces: read only in same school, writes only to own school,
+    //     deletes only by admin role (owner or principal).
     // ═══════════════════════════════════════════════════════════════════════
 
     // ── Academic core ────────────────────────────────────────────────────
     match /attendance/{id} {
-      allow read: if signedIn();
-      allow create: if signedIn() && hasSchoolId();
-      allow update: if signedIn() && schoolIdImmutable();
-      allow delete: if signedIn() && isOwnerOf(docSchool());
+      allow get, list: if signedIn() && inSameSchool();
+      allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
+      allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
+      allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
     match /results/{id} {
-      allow read: if signedIn();
-      allow create: if signedIn() && hasSchoolId();
-      allow update: if signedIn() && schoolIdImmutable();
-      allow delete: if signedIn() && isOwnerOf(docSchool());
+      allow get, list: if signedIn() && inSameSchool();
+      allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
+      allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
+      allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
     match /test_scores/{id} {
-      allow read: if signedIn();
-      allow create: if signedIn() && hasSchoolId();
-      allow update: if signedIn() && schoolIdImmutable();
-      allow delete: if signedIn() && isOwnerOf(docSchool());
+      allow get, list: if signedIn() && inSameSchool();
+      allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
+      allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
+      allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
     match /gradebook_scores/{id} {
-      allow read: if signedIn();
-      allow create: if signedIn() && hasSchoolId();
-      allow update: if signedIn() && schoolIdImmutable();
-      allow delete: if signedIn() && isOwnerOf(docSchool());
+      allow get, list: if signedIn() && inSameSchool();
+      allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
+      allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
+      allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
     match /gradebook_columns/{id} {
-      allow read: if signedIn();
-      allow create: if signedIn() && hasSchoolId();
-      allow update: if signedIn() && schoolIdImmutable();
-      allow delete: if signedIn();
+      allow get, list: if signedIn() && inSameSchool();
+      allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
+      allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
+      allow delete:    if signedIn() && inSameSchool() && hasStaffRole();
     }
     match /assignments/{id} {
-      allow read: if signedIn();
-      allow create: if signedIn() && hasSchoolId();
-      allow update: if signedIn() && schoolIdImmutable();
-      allow delete: if signedIn();
+      allow get, list: if signedIn() && inSameSchool();
+      allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
+      allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
+      allow delete:    if signedIn() && inSameSchool() && hasStaffRole();
     }
     match /submissions/{id} {
-      allow read: if signedIn();
-      allow create: if signedIn() && hasSchoolId();
-      allow update: if signedIn() && schoolIdImmutable();
-      allow delete: if signedIn() && isOwnerOf(docSchool());
+      allow get, list: if signedIn() && inSameSchool();
+      allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool();
+      allow update:    if signedIn() && inSameSchool() && schoolIdImmutable();
+      allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
     match /tests/{id} {
-      allow read: if signedIn();
-      allow create: if signedIn() && hasSchoolId();
-      allow update: if signedIn() && schoolIdImmutable();
-      allow delete: if signedIn();
+      allow get, list: if signedIn() && inSameSchool();
+      allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
+      allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
+      allow delete:    if signedIn() && inSameSchool() && hasStaffRole();
     }
     match /classes/{id} {
-      allow read: if signedIn();
-      allow create: if signedIn() && hasSchoolId();
-      allow update: if signedIn() && schoolIdImmutable();
-      allow delete: if signedIn() && isOwnerOf(docSchool());
+      allow get, list: if signedIn() && inSameSchool();
+      allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
+      allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
+      allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
     match /enrollments/{id} {
-      allow read: if signedIn();
-      allow create: if signedIn() && hasSchoolId();
-      allow update: if signedIn() && schoolIdImmutable();
-      allow delete: if signedIn() && isOwnerOf(docSchool());
+      allow get, list: if signedIn() && inSameSchool();
+      allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
+      allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
+      allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
     match /fees/{id} {
-      allow read: if signedIn();
-      allow create: if signedIn() && hasSchoolId();
-      allow update: if signedIn() && schoolIdImmutable();
-      allow delete: if signedIn() && isOwnerOf(docSchool());
+      allow get, list: if signedIn() && inSameSchool();
+      allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
+      allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
+      allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
     match /fee_structure/{id} {
-      allow read:   if signedIn();
-      allow create: if signedIn() && hasSchoolId();
-      allow update: if signedIn() && schoolIdImmutable();
-      // Delete: owner OR any signed-in user working inside the same school
-      // (principal / DEO). They created it, they can delete their own version.
-      allow delete: if signedIn();
+      allow get, list: if signedIn() && inSameSchool();
+      allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasAdminRole();
+      allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasAdminRole();
+      allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
     match /incidents/{id} {
-      allow read: if signedIn();
-      allow create: if signedIn() && hasSchoolId();
-      allow update: if signedIn() && schoolIdImmutable();
-      allow delete: if signedIn() && isOwnerOf(docSchool());
+      allow get, list: if signedIn() && inSameSchool();
+      allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
+      allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
+      allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
     match /discipline/{id} {
-      allow read: if signedIn();
-      allow create: if signedIn() && hasSchoolId();
-      allow update: if signedIn() && schoolIdImmutable();
-      allow delete: if signedIn() && isOwnerOf(docSchool());
+      allow get, list: if signedIn() && inSameSchool();
+      allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
+      allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
+      allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
 
     // ── Risk & intervention ─────────────────────────────────────────────
     match /risks/{id} {
-      allow read: if signedIn();
-      allow create: if signedIn() && hasSchoolId();
-      allow update: if signedIn() && schoolIdImmutable();
-      allow delete: if signedIn() && isOwnerOf(docSchool());
+      allow get, list: if signedIn() && inSameSchool();
+      allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
+      allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
+      allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
     match /interventions/{id} {
-      allow read: if signedIn();
-      allow create: if signedIn() && hasSchoolId();
-      allow update: if signedIn() && schoolIdImmutable();
-      allow delete: if signedIn() && isOwnerOf(docSchool());
+      allow get, list: if signedIn() && inSameSchool();
+      allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
+      allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
+      allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
     match /student_flags/{id} {
-      allow read: if signedIn();
-      allow create: if signedIn() && hasSchoolId();
-      allow update: if signedIn() && schoolIdImmutable();
-      allow delete: if signedIn() && isOwnerOf(docSchool());
+      allow get, list: if signedIn() && inSameSchool();
+      allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
+      allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
+      allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
     match /student_smart_alerts/{id} {
-      allow read: if signedIn();
-      allow create: if signedIn() && hasSchoolId();
-      allow update: if signedIn() && schoolIdImmutable();
-      allow delete: if signedIn() && isOwnerOf(docSchool());
+      allow get, list: if signedIn() && inSameSchool();
+      allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
+      allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
+      allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
     match /alert_resolutions/{id} {
-      allow read: if signedIn();
-      allow create: if signedIn() && hasSchoolId();
-      allow update: if signedIn() && schoolIdImmutable();
-      allow delete: if signedIn() && isOwnerOf(docSchool());
+      allow get, list: if signedIn() && inSameSchool();
+      allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
+      allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
+      allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
     match /performance_feedback/{id} {
-      allow read: if signedIn();
-      allow create: if signedIn() && hasSchoolId();
-      allow update: if signedIn() && schoolIdImmutable();
-      allow delete: if signedIn() && isOwnerOf(docSchool());
+      allow get, list: if signedIn() && inSameSchool();
+      allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
+      allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
+      allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
 
     // ── Communications — principal ↔ teacher/parent ────────────────────
     match /principal_to_parent_notes/{id} {
-      allow read: if signedIn();
-      allow create: if signedIn() && hasSchoolId();
-      allow update: if signedIn() && schoolIdImmutable();
-      allow delete: if signedIn() && isOwnerOf(docSchool());
+      allow get, list: if signedIn() && inSameSchool();
+      allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasAdminRole();
+      allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasAdminRole();
+      allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
     match /principal_to_teacher_notes/{id} {
-      allow read: if signedIn();
-      allow create: if signedIn() && hasSchoolId();
-      allow update: if signedIn() && schoolIdImmutable();
-      allow delete: if signedIn() && isOwnerOf(docSchool());
+      allow get, list: if signedIn() && inSameSchool();
+      allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasAdminRole();
+      allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasAdminRole();
+      allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
     match /parent_notes/{id} {
-      allow read: if signedIn();
-      allow create: if signedIn() && hasSchoolId();
-      allow update: if signedIn() && schoolIdImmutable();
-      allow delete: if signedIn() && isOwnerOf(docSchool());
+      allow get, list: if signedIn() && inSameSchool();
+      allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool();
+      allow update:    if signedIn() && inSameSchool() && schoolIdImmutable();
+      allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
     match /communications/{id} {
-      allow read: if signedIn();
-      allow create: if signedIn() && hasSchoolId();
-      allow update: if signedIn() && schoolIdImmutable();
-      allow delete: if signedIn() && isOwnerOf(docSchool());
+      allow get, list: if signedIn() && inSameSchool();
+      allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
+      allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
+      allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
     match /meetings/{id} {
-      allow read: if signedIn();
-      allow create: if signedIn() && hasSchoolId();
-      allow update: if signedIn() && schoolIdImmutable();
-      allow delete: if signedIn() && isOwnerOf(docSchool());
+      allow get, list: if signedIn() && inSameSchool();
+      allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
+      allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
+      allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
     match /parent_meetings/{id} {
-      allow read: if signedIn();
-      allow create: if signedIn() && hasSchoolId();
-      allow update: if signedIn() && schoolIdImmutable();
-      allow delete: if signedIn() && isOwnerOf(docSchool());
+      allow get, list: if signedIn() && inSameSchool();
+      allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool();
+      allow update:    if signedIn() && inSameSchool() && schoolIdImmutable();
+      allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
 
     // ── Reports & analytics ─────────────────────────────────────────────
     match /reports/{id} {
-      allow read: if signedIn();
-      allow create: if signedIn() && hasSchoolId();
-      allow update: if signedIn() && schoolIdImmutable();
-      allow delete: if signedIn() && isOwnerOf(docSchool());
+      allow get, list: if signedIn() && inSameSchool();
+      allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
+      allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
+      allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
     match /principal_reports/{id} {
-      allow read: if signedIn();
-      allow create: if signedIn() && hasSchoolId();
-      allow update: if signedIn() && schoolIdImmutable();
-      allow delete: if signedIn() && isOwnerOf(docSchool());
+      allow get, list: if signedIn() && inSameSchool();
+      allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasAdminRole();
+      allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasAdminRole();
+      allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
     match /scheduled_reports/{id} {
-      allow read: if signedIn();
-      allow create: if signedIn() && hasSchoolId();
-      allow update: if signedIn() && schoolIdImmutable();
-      allow delete: if signedIn() && isOwnerOf(docSchool());
+      allow get, list: if signedIn() && inSameSchool();
+      allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
+      allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
+      allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
 
     // ── Teacher records ────────────────────────────────────────────────
     match /teaching_assignments/{id} {
-      allow read: if signedIn();
-      allow create: if signedIn() && hasSchoolId();
-      allow update: if signedIn() && schoolIdImmutable();
-      allow delete: if signedIn() && isOwnerOf(docSchool());
+      allow get, list: if signedIn() && inSameSchool();
+      allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasAdminRole();
+      allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasAdminRole();
+      allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
     match /teacher_attendance/{id} {
-      allow read: if signedIn();
-      allow create: if signedIn() && hasSchoolId();
-      allow update: if signedIn() && schoolIdImmutable();
-      allow delete: if signedIn() && isOwnerOf(docSchool());
+      allow get, list: if signedIn() && inSameSchool();
+      allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasAdminRole();
+      allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasAdminRole();
+      allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
     match /teacher_reviews/{id} {
-      allow read: if signedIn();
-      allow create: if signedIn() && hasSchoolId();
-      allow update: if signedIn() && schoolIdImmutable();
-      allow delete: if signedIn() && isOwnerOf(docSchool());
+      allow get, list: if signedIn() && inSameSchool();
+      allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasAdminRole();
+      allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasAdminRole();
+      allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
+    }
+
+    // ── Timetable (class schedules) ────────────────────────────────────
+    match /timetable/{id} {
+      allow get, list: if signedIn() && inSameSchool();
+      allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
+      allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
+      allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
 
     // ── AI insight cache per student (24h TTL, refreshable) ─────────────
-    // Doc id = studentId. Written by principal dashboard after AI call.
     match /student_ai_insights/{studentId} {
-      allow read: if signedIn();
-      allow create: if signedIn() && hasSchoolId();
-      allow update: if signedIn() && schoolIdImmutable();
-      allow delete: if signedIn() && isOwnerOf(docSchool());
+      allow get, list: if signedIn() && inSameSchool();
+      allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
+      allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
+      allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
 
-    // ── Syllabus / class documents — teacher upload, all school reads ──
-    // Teachers upload PDFs for their classes. Principals + parents (of that
-    // class) read. Delete: owner, teacher who uploaded, or principal.
+    // ── Syllabus / class documents ─────────────────────────────────────
     match /syllabi/{id} {
-      allow read: if signedIn();
-      allow create: if signedIn() && hasSchoolId();
-      allow update: if signedIn() && schoolIdImmutable();
-      allow delete: if signedIn();
+      allow get, list: if signedIn() && inSameSchool();
+      allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
+      allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
+      allow delete:    if signedIn() && inSameSchool() && hasStaffRole();
     }
 
-    // ── Owner → Principal notifications (fee defaulter alerts, etc.) ───
+    // ── Owner → Principal notifications ────────────────────────────────
     match /owner_to_principal_notes/{id} {
-      allow read: if signedIn();
-      allow create: if signedIn() && hasSchoolId();
-      allow update: if signedIn() && schoolIdImmutable();
-      allow delete: if signedIn() && isOwnerOf(docSchool());
+      allow get, list: if signedIn() && inSameSchool();
+      allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasOwnerRole();
+      allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasAdminRole();
+      allow delete:    if isOwnerOf(resource.data.schoolId);
+    }
+
+    // ── Public resources library (marketing content, videos) ───────────
+    //   Collection used by populate_resources.js. Public read, writes only
+    //   by authenticated staff (not open to clients).
+    match /resources_library/{id} {
+      allow get, list: if true;
+      allow write:     if signedIn() && hasOwnerRole();
     }
 
 
     // ═══════════════════════════════════════════════════════════════════════
     // ── 12. CATCH-ALL — deny unknown collections ────────────────────────
-    //     Any collection NOT explicitly listed above is BLOCKED.
-    //     This prevents developers from accidentally creating unrouted
-    //     collections that bypass tenant isolation.
-    //
-    //     To allow a new collection, add an explicit match block above.
     // ═══════════════════════════════════════════════════════════════════════
     match /{document=**} {
       allow read, write: if false;
