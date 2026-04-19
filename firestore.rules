@@ -412,6 +412,13 @@ service cloud.firestore {
       allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasAdminRole();
       allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
     }
+    match /exam_structure/{id} {
+      allow get:  if signedIn() && inSameSchool();
+      allow list: if signedIn();  // TEMPORARY PHASE-1: relaxed while client queries migrate. Re-tighten to inSameSchool() once all pages filter by schoolId.
+      allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasAdminRole();
+      allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasAdminRole();
+      allow delete:    if signedIn() && inSameSchool() && hasAdminRole();
+    }
     match /incidents/{id} {
       allow get:  if signedIn() && inSameSchool();
       allow list: if signedIn();  // TEMPORARY PHASE-1: relaxed while client queries migrate. Re-tighten to inSameSchool() once all pages filter by schoolId.

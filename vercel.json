@@ -1,6 +1,8 @@
 {
   "rewrites": [
-    { "source": "/((?!.*\\.).*)", "destination": "/index.html" }
+    { "source": "/__/auth/:path*",     "destination": "https://eduintellect-7e709.firebaseapp.com/__/auth/:path*" },
+    { "source": "/__/firebase/:path*", "destination": "https://eduintellect-7e709.firebaseapp.com/__/firebase/:path*" },
+    { "source": "/((?!.*\\.).*)",      "destination": "/index.html" }
   ],
   "headers": [
     {
@@ -20,6 +22,12 @@
       "source": "/assets/(.*)",
       "headers": [
         { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+      ]
+    },
+    {
+      "source": "/__/auth/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }
       ]
     }
   ]

@@ -36,9 +36,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // attach the auth listener — otherwise the user can briefly flash to the
   // login screen after returning from the Google redirect.
   useEffect(() => {
-    getRedirectResult(auth).catch((err) => {
-      console.warn('[Auth] getRedirectResult failed:', err?.message || err);
-    });
+    getRedirectResult(auth)
+      .then((result) => {
+        if (result?.user) {
+          // onAuthStateChanged will fire next; nothing to do here.
+          console.info('[Auth] Redirect sign-in resolved for', result.user.email);
+        }
+      })
+      .catch((err) => {
+        // Surface the error in the UI — silent failures here are why users
+        // see the login screen "do nothing" after returning from Google.
+        console.error('[Auth] getRedirectResult failed:', err?.code, err?.message || err);
+        const code = err?.code as string | undefined;
+        if (code === 'auth/unauthorized-domain') {
+          setError('This domain is not authorized for sign-in. Add it in Firebase Console → Authentication → Settings → Authorized domains.');
+        } else if (code === 'auth/network-request-failed') {
+          setError('Network error during sign-in. Check your connection and try again.');
+        } else if (code) {
+          setError(`Sign-in failed (${code}). Please try again.`);
+        }
+      });
   }, []);
 
   useEffect(() => {

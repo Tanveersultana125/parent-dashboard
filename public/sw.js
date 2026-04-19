@@ -13,7 +13,7 @@
  *   - Push notifications ready
  */
 
-const CACHE_VERSION  = 'v4';
+const CACHE_VERSION  = 'v5';
 const STATIC_CACHE   = `edullent-static-${CACHE_VERSION}`;
 const API_CACHE      = `edullent-api-${CACHE_VERSION}`;
 const STORAGE_CACHE  = `edullent-storage-${CACHE_VERSION}`;
@@ -135,6 +135,14 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET') return;
   if (url.protocol === 'chrome-extension:') return;
   if (url.protocol === 'data:') return;
+
+  // CRITICAL: never intercept the Firebase auth handler / iframe paths.
+  // They are proxied to firebaseapp.com via Vercel rewrites and need fresh
+  // cookies + same-origin treatment for iOS PWA OAuth redirect to work.
+  if (url.pathname.startsWith('/__/auth') ||
+      url.pathname.startsWith('/__/firebase')) {
+    return; // let the browser handle it directly
+  }
 
   // SPA navigation — any HTML page request (deep link refresh, share-link open).
   // Always serve cached app shell so the React router can resolve the route,
