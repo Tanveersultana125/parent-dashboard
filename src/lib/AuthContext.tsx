@@ -44,10 +44,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       })
       .catch((err) => {
-        // Surface the error in the UI — silent failures here are why users
-        // see the login screen "do nothing" after returning from Google.
-        console.error('[Auth] getRedirectResult failed:', err?.code, err?.message || err);
         const code = err?.code as string | undefined;
+
+        // BENIGN ERRORS — these fire on initial page load when there's no
+        // pending redirect to resolve, OR when stale IndexedDB state exists
+        // from a previous authDomain. They do NOT block subsequent logins.
+        // Swallow silently so we don't show a fake "sign-in failed" message
+        // to a user who hasn't even tried to log in yet.
+        const benign = new Set([
+          'auth/argument-error',
+          'auth/no-auth-event',
+          'auth/missing-or-invalid-nonce',
+          'auth/credential-already-in-use',
+        ]);
+        if (code && benign.has(code)) {
+          console.warn('[Auth] getRedirectResult benign:', code, '(safe to ignore)');
+          return;
+        }
+
+        // Real failure — log loudly + show in UI.
+        console.error('[Auth] getRedirectResult failed:', code, err?.message || err);
         if (code === 'auth/unauthorized-domain') {
           setError('This domain is not authorized for sign-in. Add it in Firebase Console → Authentication → Settings → Authorized domains.');
         } else if (code === 'auth/network-request-failed') {
