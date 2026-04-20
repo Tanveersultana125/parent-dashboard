@@ -9,6 +9,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { db } from "@/lib/firebase";
+import { subscribeEnrollments } from "@/lib/enrollmentQuery";
 import {
   collection, query, where, onSnapshot,
   doc, updateDoc
@@ -142,10 +143,12 @@ const AlertsPage = () => {
         assignUnsubs.push(u);
       });
     };
-    const enrollQ = schoolId
-      ? query(collection(db, "enrollments"), where("schoolId", "==", schoolId), where("studentId", "==", sid))
-      : query(collection(db, "enrollments"), where("studentId", "==", sid));
-    unsubs.push(onSnapshot(enrollQ, s => { enrollSnap = s; processEnrollments(); }));
+    // Dual-listener helper — also matches legacy enrollments where studentId
+    // was stored as the email by older teacher/principal-dashboard writes.
+    unsubs.push(subscribeEnrollments(studentData, (docs) => {
+      enrollSnap = { docs };
+      processEnrollments();
+    }));
 
     return () => {
       unsubs.forEach(u => u());

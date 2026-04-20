@@ -7,6 +7,7 @@ import WeeklyReportPDF from "../components/WeeklyReportPDF";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { db } from "@/lib/firebase";
 import { collection, query, where, onSnapshot, getDocs, Timestamp } from "firebase/firestore";
+import { subscribeEnrollments } from "@/lib/enrollmentQuery";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 function timeAgo(date: Date): string {
@@ -294,7 +295,13 @@ const DashboardPage = () => {
       }));
       setDataLoading(false);
     };
-    const u2 = onSnapshot(sq("enrollments"), s => { enSnap = s; processEnroll(); });
+    // Use the dual-listener helper so legacy enrollments (where studentId
+    // was set to email by older teacher/principal-dashboard code) are also
+    // picked up — otherwise pending/tests show "no data" for those students.
+    const u2 = subscribeEnrollments(studentData, (docs) => {
+      enSnap = { docs };
+      processEnroll();
+    });
 
     // 3. Results + gradebook — single listener each (was 4)
     let rSnap: any = null, gSnap: any = null;

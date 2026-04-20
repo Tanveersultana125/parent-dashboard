@@ -7,6 +7,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { useAuth } from "@/lib/AuthContext";
 import { db } from "@/lib/firebase";
 import { collection, query, where, onSnapshot, limit } from "firebase/firestore";
+import { subscribeEnrollments } from "@/lib/enrollmentQuery";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 export default function BehaviourPage() {
@@ -21,12 +22,10 @@ export default function BehaviourPage() {
     setLoading(true);
     const schoolId = studentData.schoolId;
 
-    // 1. Enrollments — single scoped query for manual rating
-    const enrollQ = schoolId
-      ? query(collection(db, "enrollments"), where("schoolId", "==", schoolId), where("studentId", "==", studentData.id))
-      : query(collection(db, "enrollments"), where("studentId", "==", studentData.id));
-    const unsubEnroll = onSnapshot(enrollQ, (snap) => {
-      const ratings = snap.docs.map(d => d.data().manualBehaviourRating).filter(r => r !== undefined);
+    // 1. Enrollments — dual-listener helper picks up legacy enrollments
+    // where studentId was stored as email by older writes.
+    const unsubEnroll = subscribeEnrollments(studentData, (docs) => {
+      const ratings = docs.map(d => d.data().manualBehaviourRating).filter(r => r !== undefined);
       if (ratings.length > 0) setManualRating(Math.max(...ratings));
     });
 

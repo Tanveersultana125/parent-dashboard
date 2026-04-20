@@ -3,6 +3,7 @@ import { User, Clock, CheckCircle2, Loader2, Upload, FileCheck, X, FileText, Boo
 import { useAuth } from "@/lib/AuthContext";
 import { db, storage } from "@/lib/firebase";
 import { collection, query, where, onSnapshot, addDoc, serverTimestamp, Unsubscribe } from "firebase/firestore";
+import { subscribeEnrollments } from "@/lib/enrollmentQuery";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -68,13 +69,10 @@ const AssignmentsPage = () => {
         });
     };
 
-    // Single scoped enrollment listener — triggers assignment reload on change
-    const enrollQ = schoolId
-      ? query(collection(db, "enrollments"), where("schoolId", "==", schoolId), where("studentId", "==", studentData.id))
-      : query(collection(db, "enrollments"), where("studentId", "==", studentData.id));
-
-    const unsubEnroll = onSnapshot(enrollQ, (snap) => {
-      const classIds = [...new Set(snap.docs.map(d => d.data().classId).filter(Boolean))] as string[];
+    // Dual-listener helper — picks up legacy enrollments (studentId stored
+    // as email by older teacher/principal writes) as well as new ones.
+    const unsubEnroll = subscribeEnrollments(studentData, (docs) => {
+      const classIds = [...new Set(docs.map(d => d.data().classId).filter(Boolean))] as string[];
       setupAssignmentListener(classIds);
     });
 

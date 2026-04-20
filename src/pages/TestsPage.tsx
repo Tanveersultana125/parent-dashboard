@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/AuthContext";
 import { db } from "@/lib/firebase";
 import { useSchoolSettings } from "@/hooks/useSchoolSettings";
 import { collection, query, where, onSnapshot, limit } from "firebase/firestore";
+import { subscribeEnrollments } from "@/lib/enrollmentQuery";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { useIsMobile } from "@/hooks/use-mobile";
 
@@ -62,10 +63,12 @@ const TestsPage = () => {
       });
     };
 
-    const enrollQ = schoolId
-      ? query(collection(db, "enrollments"), where("schoolId", "==", schoolId), where("studentId", "==", studentData.id))
-      : query(collection(db, "enrollments"), where("studentId", "==", studentData.id));
-    const unsubEnroll = onSnapshot(enrollQ, (snap) => { enrollSnap = snap; processEnrollments(); });
+    // Dual-listener helper — also matches legacy enrollments where the
+    // teacher/principal-dashboard wrote studentId as the email.
+    const unsubEnroll = subscribeEnrollments(studentData, (docs) => {
+      enrollSnap = { docs };
+      processEnrollments();
+    });
 
     // test_scores — single scoped query
     const scoresQ = schoolId

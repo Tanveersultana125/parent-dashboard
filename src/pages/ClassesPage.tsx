@@ -7,9 +7,8 @@ import {
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/AuthContext";
 import { db } from "../lib/firebase";
-import {
-  collection, query, where, onSnapshot, doc as fbDoc, getDoc as fbGetDoc
-} from "firebase/firestore";
+import { doc as fbDoc, getDoc as fbGetDoc } from "firebase/firestore";
+import { subscribeEnrollments } from "../lib/enrollmentQuery";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 // Index-based vibrant fallback colors (so every card is colorful even if subject unknown)
@@ -69,10 +68,9 @@ const ClassesPage = () => {
   useEffect(() => {
     if (!studentData?.id) return;
     setLoading(true);
-    const schoolId = studentData.schoolId;
 
-    const processEnrollments = async (snap: any) => {
-      const raw = snap.docs.map((d: any) => ({ id: d.id, ...(d.data() as any) }));
+    const processEnrollments = async (docs: { id: string; data: () => any }[]) => {
+      const raw = docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
 
       const enriched = await Promise.all(raw.map(async (en: any) => {
         let teacherName = en.teacherName || "Faculty";
@@ -90,14 +88,12 @@ const ClassesPage = () => {
       setLoading(false);
     };
 
-    // Single scoped query — prevents cross-school data access
-    const enrollQ = schoolId
-      ? query(collection(db, "enrollments"), where("schoolId", "==", schoolId), where("studentId", "==", studentData.id))
-      : query(collection(db, "enrollments"), where("studentId", "==", studentData.id));
-    const unsub = onSnapshot(enrollQ, s => processEnrollments(s));
-
+    // Dual-listener helper — matches enrollments by either studentId OR
+    // studentEmail so legacy enrollments (where studentId was set to email
+    // by older teacher/principal-dashboard code) still appear here.
+    const unsub = subscribeEnrollments(studentData, processEnrollments);
     return () => unsub();
-  }, [studentData?.id, studentData?.schoolId]);
+  }, [studentData?.id, studentData?.schoolId, studentData?.email]);
 
   const childFirstName = studentData?.name?.split(" ")[0] || "your child";
   const uniqueTeacherCount = new Set(enrollments.map(e => e.teacherId).filter(Boolean)).size;
