@@ -1161,542 +1161,622 @@ const DashboardPage = () => {
   }
 
   /* ═══════════════════════════════════════════════════════════════
-     DESKTOP — Existing UI (unchanged)
+     DESKTOP — Edullent Indigo Apple UI (matches mobile language)
      ═══════════════════════════════════════════════════════════════ */
-  return (
-    <div className="animate-in fade-in duration-500">
-      <PageHeader
-        title={`${greeting}, ${parentFirstName}! 👋`}
-        subtitle={`Here's how ${childFirstName} is doing today`}
-      />
+  {
+    // Indigo tokens (same as mobile)
+    const IND = "#30306E";
+    const IND2 = "#4444A0";
+    const IND3 = "#6666C0";
+    const BG = "#EEEEF3";
+    const T1 = "rgba(48,48,110,0.90)";
+    const T2 = "rgba(48,48,110,0.70)";
+    const T3 = "rgba(48,48,110,0.42)";
+    const T4 = "rgba(48,48,110,0.25)";
+    const SEP = "rgba(48,48,110,0.06)";
+    const IND_BDR = "rgba(48,48,110,0.12)";
+    const IND_SOFT = "rgba(48,48,110,0.07)";
+    const GREEN = "#12C04E";
+    const GREEN_S = "rgba(18,192,78,0.10)";
+    const GREEN_B = "rgba(18,192,78,0.22)";
+    const ORANGE = "#F5A000";
+    const ORANGE_S = "rgba(245,160,0,0.10)";
+    const ORANGE_B = "rgba(245,160,0,0.22)";
+    const ROSE = "#FF6EA8";
+    const ROSE_S = "rgba(255,110,168,0.10)";
+    const DK = "#09092A";
+    const DK_CELL = "rgba(9,9,42,0.58)";
+    const SH = "0 0 0 0.5px rgba(48,48,110,0.06), 0 1px 3px rgba(48,48,110,0.04), 0 8px 20px rgba(48,48,110,0.07)";
+    const SH_LG = "0 0 0 0.5px rgba(48,48,110,0.08), 0 2px 8px rgba(48,48,110,0.06), 0 16px 36px rgba(48,48,110,0.10), 0 32px 56px rgba(48,48,110,0.06)";
+    const SH_BTN = "0 4px 14px rgba(48,48,110,0.28), 0 1px 4px rgba(48,48,110,0.18)";
 
-      {/* Academic Health */}
-      <div className="bg-white border border-slate-100 rounded-2xl p-5 md:p-6 mb-5 shadow-sm overflow-hidden relative">
-        <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-50/50 rounded-full -mr-16 -mt-16 blur-3xl" />
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative z-10">
-          <div>
-            <h3 className="text-lg font-bold text-slate-800">Academic Health</h3>
-            <p className="text-sm text-slate-400 mt-0.5">Overall performance indicator</p>
-            <div className={`flex items-center gap-2 font-bold text-sm mt-4 w-fit px-3 py-1 rounded-full ${
-              liveStats.trendPct >= 0
-                ? "text-emerald-500 bg-emerald-50"
-                : "text-red-500 bg-red-50"
-            }`}>
-              <TrendingUp className={`w-4 h-4 ${liveStats.trendPct < 0 ? "rotate-180" : ""}`} />
-              <span>
-                {liveStats.trendPct === 0
-                  ? "Stable performance"
-                  : liveStats.trendPct > 0
-                  ? `Improved by ${liveStats.trendPct}%`
-                  : `Declined by ${Math.abs(liveStats.trendPct)}%`}
-              </span>
-            </div>
-          </div>
-          <div className="flex items-center gap-4 sm:gap-6 bg-slate-50/50 rounded-2xl p-3 sm:bg-transparent sm:p-0">
-            <div className="text-right">
-              <p className="text-3xl md:text-4xl font-bold text-emerald-500">{liveStats.avgScore > 0 ? `${liveStats.avgScore}%` : "—"}</p>
-              <p className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-wider mt-1">
-                {liveStats.avgScore >= 75 ? "Good Standing" : liveStats.avgScore > 0 ? "Needs Attention" : "No data yet"}
-              </p>
-            </div>
-            <div className="relative shrink-0 scale-90 md:scale-100">
-              <DonutRing pct={liveStats.avgScore} color={liveStats.avgScore >= 80 ? "#10b981" : liveStats.avgScore >= 60 ? "#6366f1" : "#ef4444"} size={96} stroke={10} />
-            </div>
-          </div>
-        </div>
-      </div>
+    const scorePct = Math.min(liveStats.avgScore, 100);
+    const ringR = 56, ringCirc = 2 * Math.PI * ringR;
+    const ringOffset = ringCirc - (scorePct / 100) * ringCirc;
+    const attOnTrack = liveStats.attendance !== null && liveStats.attendance >= 85;
+    const noPending = liveStats.pending === 0;
+    const isImproving = liveStats.trendPct > 0;
+    const isDeclining = liveStats.trendPct < 0;
+    const trendStable = liveStats.trendPct === 0;
 
-      {/* 4 Stat Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-5">
-        {[
-          { icon: CheckCircle, colorCls: "bg-emerald-50 text-emerald-600", tagCls: "text-emerald-600", label: "Attendance", value: attDisplay, tag: liveStats.attendance === null ? "No records yet" : liveStats.attendance >= 85 ? "On track" : "Below target" },
-          { icon: AlertCircle, colorCls: "bg-amber-50 text-amber-600", tagCls: "text-amber-500", label: "Pending Work", value: pendingDisplay, tag: liveStats.pending === null ? "No assignments yet" : "Due this week" },
-          { icon: Calendar, colorCls: "bg-indigo-50 text-indigo-600", tagCls: "text-slate-400", label: "Upcoming Tests", value: testsDisplay, tag: liveStats.tests === null ? "No tests scheduled" : "Next 7 days" },
-          { icon: Star, colorCls: "bg-emerald-50 text-emerald-600", tagCls: "text-emerald-600", label: "Recent Grade", value: liveStats.recentGrade, tag: liveStats.recentSubject },
-        ].map(({ icon: Icon, colorCls, tagCls, label, value, tag }) => (
-          <div key={label} className="bg-white border border-slate-100 rounded-2xl p-4 md:p-5 shadow-sm hover:shadow-md transition-all group">
-            <div className={`w-9 h-9 md:w-10 md:h-10 rounded-xl flex items-center justify-center mb-3 md:mb-4 group-hover:scale-110 transition-transform ${colorCls}`}>
-              <Icon className="w-4 h-4 md:w-5 md:h-5" />
-            </div>
-            <p className="text-[10px] md:text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">{label}</p>
-            <p className="text-xl md:text-2xl font-bold text-slate-800">{value}</p>
-            <p className={`text-[10px] md:text-xs font-semibold mt-1 truncate ${tagCls}`}>{tag}</p>
-          </div>
-        ))}
-      </div>
+    return (
+      <div className="animate-in fade-in duration-500 -m-4 sm:-m-6 md:-m-8 min-h-[calc(100vh-64px)]"
+        style={{ fontFamily: "'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif", background: BG }}>
+        <div className="w-full px-6 pt-8 pb-12">
 
-      {/* Student Profile + Alerts */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 mb-5">
-        <div className="lg:col-span-3 bg-white border border-slate-100 rounded-2xl p-6 shadow-sm">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-4 mb-5">
-            <div className="w-14 h-14 md:w-16 md:h-16 rounded-2xl bg-[#1e3a8a] text-white flex items-center justify-center text-lg md:text-xl font-bold flex-shrink-0">
-              {studentInitials}
-            </div>
+          {/* ── Greeting + Date ── */}
+          <div className="flex items-start justify-between gap-6 flex-wrap mb-8">
             <div>
-              <h3 className="text-lg md:text-xl font-bold text-slate-800">{studentData?.name || "Student"}</h3>
-              <p className="text-sm text-slate-400 mt-0.5">
-                {studentMeta.className !== "—" ? `Grade ${studentMeta.className}` : studentData?.grade ? `Grade ${studentData.grade}` : ""}
-                {studentMeta.rollNo !== "—" ? ` • Roll ${studentMeta.rollNo}` : ""}
-              </p>
+              <h1 className="text-[42px] font-bold leading-[1.05]" style={{ color: T1, letterSpacing: "-1.2px" }}>
+                {greeting},{" "}
+                <span style={{ background: `linear-gradient(130deg, ${IND} 0%, ${IND3} 100%)`, WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+                  {parentFirstName}
+                </span> 👋
+              </h1>
+              <p className="text-[15px] mt-2" style={{ color: T3, letterSpacing: "-0.1px" }}>Here's how {childFirstName} is doing today</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="flex flex-col items-end">
+                <span className="text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: T4 }}>
+                  {currentTime.toLocaleDateString("en-US", { weekday: "long" })}
+                </span>
+                <span className="text-[14px] font-semibold mt-[2px]" style={{ color: T2 }}>
+                  {currentTime.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}
+                </span>
+              </div>
+              <div className="w-12 h-12 rounded-[14px] flex items-center justify-center text-[14px] font-bold text-white"
+                style={{ background: `linear-gradient(140deg, ${IND} 0%, ${IND2} 100%)`, boxShadow: "0 4px 14px rgba(48,48,110,0.28)" }}>
+                {userInitials}
+              </div>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4 border-t border-slate-50 pt-5">
-            <div>
-              <p className="text-[10px] uppercase tracking-wider font-bold text-slate-400 mb-1">Class Teacher</p>
-              <p className="text-sm font-semibold text-slate-700 truncate">{teacherInfo.name}</p>
-            </div>
-            <div>
-              <p className="text-[10px] uppercase tracking-wider font-bold text-slate-400 mb-1">Academic Year</p>
-              <p className="text-sm font-semibold text-slate-700">{academicYear}</p>
-            </div>
-          </div>
-        </div>
 
-        <div className="lg:col-span-2 bg-white border border-slate-100 rounded-2xl p-6 shadow-sm">
-          <h3 className="text-base font-bold text-slate-800 mb-4">Recent Alerts</h3>
-          <div className="space-y-3">
-            {recentAlerts.length > 0 ? recentAlerts.map(alert => (
-              <div key={alert.id} className={`flex items-start gap-3 p-3 rounded-xl ${alert.urgent ? "bg-amber-50" : "bg-emerald-50"}`}>
-                <div className={`w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${alert.urgent ? "bg-amber-100 text-amber-600" : "bg-emerald-100 text-emerald-600"}`}>
-                  {alert.urgent ? <Clock className="w-3.5 h-3.5" /> : <CheckCircle className="w-3.5 h-3.5" />}
+          {/* ── Row 1: Academic Health + Profile Card ── */}
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-5 mb-5">
+
+            {/* Academic Health (lg:col-span-3) */}
+            <div className="lg:col-span-3 bg-white rounded-[28px] p-8 relative overflow-hidden"
+              style={{ boxShadow: SH_LG, border: `0.5px solid ${IND_BDR}` }}>
+              <div className="absolute -top-[80px] -right-[60px] w-[260px] h-[260px] rounded-full pointer-events-none"
+                style={{ background: "radial-gradient(circle, rgba(48,48,110,0.05) 0%, transparent 70%)" }} />
+              <div className="absolute -bottom-[60px] left-6 w-[200px] h-[200px] rounded-full pointer-events-none"
+                style={{ background: "radial-gradient(circle, rgba(48,48,110,0.03) 0%, transparent 70%)" }} />
+              <div className="relative z-10">
+                <div className="flex items-start justify-between gap-4 mb-6">
+                  <div>
+                    <h3 className="text-[22px] font-bold" style={{ color: T1, letterSpacing: "-0.5px" }}>Academic Health</h3>
+                    <p className="text-[14px] mt-1" style={{ color: T3 }}>Overall performance indicator</p>
+                  </div>
+                  <div className="inline-flex items-center gap-[6px] px-[14px] py-[7px] rounded-full text-[13px] font-semibold"
+                    style={{
+                      background: trendStable || isImproving ? GREEN_S : ORANGE_S,
+                      color: trendStable || isImproving ? "#0A6A2E" : "#905800",
+                      border: `0.5px solid ${trendStable || isImproving ? GREEN_B : ORANGE_B}`,
+                      letterSpacing: "-0.1px"
+                    }}>
+                    <TrendingUp className={`w-[13px] h-[13px] ${isDeclining ? "rotate-180" : ""}`} />
+                    {trendStable ? "Stable performance" : isImproving ? `Improved by ${liveStats.trendPct}%` : `Declined by ${Math.abs(liveStats.trendPct)}%`}
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm font-medium text-slate-800 leading-snug">{alert.title}</p>
-                  <p className="text-xs text-slate-400 mt-0.5">{timeAgo(alert.time)}</p>
+                <div className="flex items-end justify-between gap-6 mt-8">
+                  <div className="flex flex-col gap-2">
+                    <div className="text-[80px] font-bold leading-none" style={{ color: IND, letterSpacing: "-4.5px" }}>
+                      {liveStats.avgScore > 0 ? `${liveStats.avgScore}%` : "—"}
+                    </div>
+                    <div className="text-[11px] font-bold uppercase tracking-[0.10em] mt-2" style={{ color: T4 }}>
+                      {liveStats.avgScore >= 75 ? "Good Standing" : liveStats.avgScore > 0 ? "Needs Attention" : "No data yet"}
+                    </div>
+                  </div>
+                  <div className="relative w-[140px] h-[140px] shrink-0">
+                    <svg viewBox="0 0 140 140" width="140" height="140" style={{ transform: "rotate(-90deg)" }}>
+                      <defs>
+                        <linearGradient id="indGradDesk" x1="0%" y1="0%" x2="100%" y2="100%">
+                          <stop offset="0%" stopColor={IND3} />
+                          <stop offset="100%" stopColor={IND} />
+                        </linearGradient>
+                      </defs>
+                      <circle cx="70" cy="70" r={ringR} fill="none" stroke="rgba(48,48,110,0.09)" strokeWidth="10" />
+                      <circle cx="70" cy="70" r={ringR} fill="none" stroke="url(#indGradDesk)" strokeWidth="10" strokeLinecap="round"
+                        strokeDasharray={ringCirc} strokeDashoffset={ringOffset}
+                        style={{ transition: "stroke-dashoffset 1s cubic-bezier(0.4,0,0.2,1)" }} />
+                    </svg>
+                    <div className="absolute inset-0 flex items-center justify-center text-[22px] font-bold" style={{ color: T1, letterSpacing: "-0.5px" }}>
+                      {liveStats.avgScore > 0 ? `${liveStats.avgScore}%` : "—"}
+                    </div>
+                  </div>
                 </div>
               </div>
-            )) : (
-              <div className="flex flex-col items-center justify-center py-8 text-slate-300 gap-2">
-                <ShieldCheck className="w-10 h-10" />
-                <p className="text-xs">No alerts right now</p>
+            </div>
+
+            {/* Profile Card (lg:col-span-2) */}
+            <div className="lg:col-span-2 rounded-[28px] p-7 relative overflow-hidden"
+              style={{
+                background: `linear-gradient(140deg, ${IND} 0%, ${IND2} 100%)`,
+                boxShadow: "0 10px 36px rgba(48,48,110,0.22), 0 0 0 0.5px rgba(255,255,255,0.18)",
+                border: "0.5px solid rgba(255,255,255,0.18)"
+              }}>
+              <div className="absolute -top-[55px] -right-[35px] w-[210px] h-[210px] rounded-full pointer-events-none"
+                style={{ background: "radial-gradient(circle, rgba(255,255,255,0.11) 0%, transparent 70%)" }} />
+              <div className="absolute inset-0 pointer-events-none" style={{
+                backgroundImage: "linear-gradient(rgba(255,255,255,0.014) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.014) 1px, transparent 1px)",
+                backgroundSize: "26px 26px"
+              }} />
+              <div className="relative z-10">
+                <div className="w-[68px] h-[68px] rounded-[22px] flex items-center justify-center text-[24px] font-bold text-white mb-4"
+                  style={{ background: "rgba(255,255,255,0.18)", border: "0.5px solid rgba(255,255,255,0.26)", boxShadow: "0 4px 20px rgba(0,0,0,0.18)" }}>
+                  {studentInitials}
+                </div>
+                <div className="text-[24px] font-bold text-white" style={{ letterSpacing: "-0.6px" }}>{studentData?.name || "Student"}</div>
+                <div className="text-[14px] mt-[3px]" style={{ color: "rgba(255,255,255,0.52)" }}>
+                  {studentMeta.className !== "—" ? `Grade ${studentMeta.className}` : studentData?.grade ? `Grade ${studentData.grade}` : "Grade —"}
+                  {studentMeta.rollNo !== "—" ? ` · Roll ${studentMeta.rollNo}` : ""}
+                </div>
+                <div className="grid grid-cols-2 mt-5 rounded-[15px] overflow-hidden" style={{ gap: "1px", background: "rgba(255,255,255,0.10)" }}>
+                  <div className="px-[15px] py-[13px]" style={{ background: "rgba(255,255,255,0.07)" }}>
+                    <div className="text-[10px] font-bold uppercase tracking-[0.09em]" style={{ color: "rgba(255,255,255,0.38)" }}>Class Teacher</div>
+                    <div className="text-[15px] font-semibold mt-1 text-white truncate" style={{ letterSpacing: "-0.2px" }}>{teacherInfo.name}</div>
+                  </div>
+                  <div className="px-[15px] py-[13px]" style={{ background: "rgba(255,255,255,0.07)" }}>
+                    <div className="text-[10px] font-bold uppercase tracking-[0.09em]" style={{ color: "rgba(255,255,255,0.38)" }}>Academic Year</div>
+                    <div className="text-[15px] font-semibold mt-1 text-white" style={{ letterSpacing: "-0.2px" }}>{academicYear}</div>
+                  </div>
+                </div>
               </div>
-            )}
+            </div>
           </div>
-        </div>
-      </div>
 
-      {/* Feature 1: AI Child Summary — 2×2 Chart Dashboard */}
-      <div className="rounded-2xl p-4 text-white relative overflow-hidden mb-4"
-        style={{ background: "linear-gradient(135deg, #0c1424 0%, #0d1f35 100%)", border: "1px solid rgba(255,255,255,0.06)" }}>
-
-        {/* Subtle grid bg */}
-        <div className="absolute inset-0 opacity-[0.025] pointer-events-none" style={{
-          backgroundImage: "linear-gradient(rgba(99,102,241,1) 1px, transparent 1px), linear-gradient(90deg, rgba(99,102,241,1) 1px, transparent 1px)",
-          backgroundSize: "28px 28px"
-        }} />
-
-        {/* Header */}
-        <div className="relative z-10 flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <Sparkles className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
-            <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">Edullent AI · Live Summary</span>
+          {/* ── Row 2: 4 Stat Cards ── */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
+            {[
+              { icon: CheckCircle, iconColor: GREEN, bg: GREEN_S, border: "rgba(18,192,78,0.20)", glow: "rgba(18,192,78,0.14)", label: "Attendance", value: attDisplay, status: liveStats.attendance === null ? "No records yet" : attOnTrack ? "On track ✓" : "Below target", statusColor: liveStats.attendance === null ? T4 : attOnTrack ? GREEN : ORANGE },
+              { icon: AlertCircle, iconColor: ORANGE, bg: ORANGE_S, border: "rgba(245,160,0,0.20)", glow: "rgba(245,160,0,0.14)", label: "Pending Work", value: pendingDisplay, status: liveStats.pending === null ? "No assignments yet" : noPending ? "All clear ✓" : "Due this week", statusColor: liveStats.pending === null ? T4 : noPending ? GREEN : ORANGE },
+              { icon: Calendar, iconColor: IND, bg: IND_SOFT, border: IND_BDR, glow: "rgba(48,48,110,0.09)", label: "Upcoming Tests", value: testsDisplay, status: liveStats.tests === null ? "No tests scheduled" : "Next 7 days", statusColor: T4 },
+              { icon: Star, iconColor: ROSE, bg: ROSE_S, border: "rgba(255,110,168,0.20)", glow: "rgba(255,110,168,0.14)", label: "Recent Grade", value: liveStats.recentGrade !== "N/A" ? liveStats.recentGrade : "—", status: liveStats.recentSubject, statusColor: T4 },
+            ].map(({ icon: Icon, iconColor, bg, border, glow, label, value, status, statusColor }) => (
+              <div key={label} className="bg-white rounded-[22px] px-5 pt-5 pb-5 relative overflow-hidden transition-transform hover:-translate-y-0.5"
+                style={{ boxShadow: SH, border: `0.5px solid ${IND_BDR}` }}>
+                <div className="absolute -top-[18px] -right-[18px] w-[90px] h-[90px] rounded-full pointer-events-none"
+                  style={{ background: `radial-gradient(circle, ${glow} 0%, transparent 70%)`, opacity: 0.55 }} />
+                <div className="w-[38px] h-[38px] rounded-[12px] flex items-center justify-center mb-4 relative"
+                  style={{ background: bg, border: `0.5px solid ${border}` }}>
+                  <Icon className="w-[18px] h-[18px]" style={{ color: iconColor }} />
+                </div>
+                <div className="text-[10px] font-bold uppercase tracking-[0.08em] relative" style={{ color: T4 }}>{label}</div>
+                <div className="text-[34px] font-bold mt-1 leading-none relative" style={{ color: T1, letterSpacing: "-1px" }}>{value}</div>
+                <div className="text-[12px] font-medium mt-[6px] relative truncate" style={{ color: statusColor }}>{status}</div>
+              </div>
+            ))}
           </div>
-          <div className="flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-2.5 py-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-[9px] font-bold text-emerald-400 uppercase tracking-wider">Live</span>
-          </div>
-        </div>
 
-        {dataLoading ? (
-          <div className="relative z-10 flex items-center gap-3 py-10 justify-center">
-            <Loader2 className="w-5 h-5 text-slate-600 animate-spin" />
-            <span className="text-xs text-slate-500">Loading {childFirstName}'s data...</span>
-          </div>
-        ) : (
-          <div className="relative z-10 space-y-3">
+          {/* ── AI Live Dark Card ── */}
+          <div className="rounded-[28px] overflow-hidden relative mb-5"
+            style={{ background: DK, boxShadow: "0 0 0 0.5px rgba(48,48,110,0.16), 0 12px 44px rgba(0,0,0,0.22), 0 4px 12px rgba(0,0,0,0.14)" }}>
+            <div className="absolute inset-0 pointer-events-none" style={{
+              background: "radial-gradient(ellipse 500px 300px at 85% 0%, rgba(48,48,110,0.32) 0%, transparent 60%), radial-gradient(ellipse 360px 360px at -10% 85%, rgba(102,102,192,0.12) 0%, transparent 60%), radial-gradient(ellipse 300px 300px at 50% 52%, rgba(48,48,110,0.06) 0%, transparent 60%)"
+            }} />
+            <div className="absolute inset-0 pointer-events-none" style={{
+              backgroundImage: "linear-gradient(rgba(180,180,230,0.018) 1px, transparent 1px), linear-gradient(90deg, rgba(180,180,230,0.018) 1px, transparent 1px)",
+              backgroundSize: "30px 30px"
+            }} />
 
-            {/* ── 2×2 grid ── */}
-            <div className="grid grid-cols-2 gap-3">
+            {/* Header */}
+            <div className="relative z-10 flex items-center justify-between px-7 pt-5 pb-[14px]" style={{ borderBottom: "0.5px solid rgba(180,180,230,0.08)" }}>
+              <div className="flex items-center gap-2">
+                <span className="text-[15px]" style={{ color: "rgba(180,180,230,0.7)" }}>✦</span>
+                <span className="text-[12px] font-bold uppercase tracking-[0.10em]" style={{ color: "rgba(180,180,230,0.6)" }}>Edullent AI · Live Summary</span>
+              </div>
+              <div className="flex items-center gap-[5px] px-3 py-[5px] rounded-full" style={{ background: "rgba(18,192,78,0.10)", border: "0.5px solid rgba(18,192,78,0.24)" }}>
+                <div className="w-[6px] h-[6px] rounded-full animate-pulse" style={{ background: GREEN, boxShadow: "0 0 0 2px rgba(18,192,78,0.2)" }} />
+                <span className="text-[10px] font-bold tracking-[0.06em]" style={{ color: GREEN }}>LIVE</span>
+              </div>
+            </div>
 
-              {/* ① Attendance */}
-              {(() => {
-                const attVal = liveStats.attendance ?? 0;
-                const noAtt = liveStats.attendance === null;
-                const attColor = noAtt ? "#475569" : attVal >= 85 ? "#f59e0b" : attVal >= 70 ? "#f59e0b" : "#ef4444";
-                return (
-                  <div className="rounded-2xl p-4 flex flex-col"
-                    style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", minHeight: 160 }}>
-                    <span className="text-[9px] font-bold uppercase tracking-[0.18em] text-slate-500 mb-3">Attendance</span>
-                    <div className="flex items-center gap-4 flex-1">
-                      <DonutRing pct={attVal} color={attColor} size={90} stroke={9} />
-                      <div className="flex-1 space-y-2">
-                        <div>
-                          <div className="text-[9px] text-slate-500 mb-1">Target &nbsp; <span className="text-slate-400 font-bold">85%</span></div>
-                          <MiniBar pct={85} color="rgba(255,255,255,0.15)" />
-                        </div>
-                        <div>
-                          <div className="text-[9px] text-slate-500 mb-1">Current</div>
-                          <MiniBar pct={attVal} color={attColor} />
-                        </div>
-                        <div className={`mt-1 text-[9px] font-bold px-2 py-0.5 rounded-full w-fit ${
-                          noAtt ? "bg-slate-500/15 text-slate-400"
-                          : attVal >= 85 ? "bg-emerald-500/15 text-emerald-400"
-                          : attVal >= 70 ? "bg-amber-500/15 text-amber-400"
-                          : "bg-red-500/15 text-red-400"
-                        }`}>
-                          {noAtt ? "No data yet" : attVal >= 85 ? "On Track" : attVal >= 70 ? "Improve" : "Critical"}
+            {dataLoading ? (
+              <div className="relative z-10 flex items-center gap-3 py-14 justify-center">
+                <Loader2 className="w-6 h-6 animate-spin" style={{ color: IND3 }} />
+                <span className="text-sm" style={{ color: "rgba(180,180,230,0.4)" }}>Loading {childFirstName}'s data...</span>
+              </div>
+            ) : (
+              <>
+                <div className="relative z-10 grid grid-cols-2 lg:grid-cols-4" style={{ gap: "1px", background: "rgba(180,180,230,0.07)" }}>
+                  {/* Attendance */}
+                  <div className="p-5 flex flex-col gap-3" style={{ background: DK_CELL }}>
+                    <span className="text-[10px] font-bold uppercase tracking-[0.10em]" style={{ color: "rgba(180,180,230,0.36)" }}>Attendance</span>
+                    <div className="flex items-center gap-3">
+                      <DonutRing pct={liveStats.attendance ?? 0} color={attOnTrack ? GREEN : ORANGE} size={72} stroke={6} />
+                      <div className="flex flex-col gap-[3px]">
+                        <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.28)" }}>Target</span>
+                        <span className="text-[12px] font-semibold" style={{ color: "rgba(255,255,255,0.58)" }}>85%</span>
+                        <div className="w-[60px] h-[3px] rounded-full mt-1 overflow-hidden" style={{ background: "rgba(255,255,255,0.07)" }}>
+                          <div className="h-full rounded-full" style={{ width: `${Math.min(liveStats.attendance ?? 0, 100)}%`, background: attOnTrack ? GREEN : ORANGE }} />
                         </div>
                       </div>
                     </div>
+                    <div className="inline-flex items-center gap-[3px] px-[9px] py-[3px] rounded-full w-fit text-[10px] font-bold"
+                      style={{
+                        background: liveStats.attendance === null ? "rgba(255,255,255,0.05)" : attOnTrack ? "rgba(18,192,78,0.15)" : "rgba(232,51,74,0.15)",
+                        color: liveStats.attendance === null ? "rgba(180,180,230,0.5)" : attOnTrack ? "#38DC78" : "#FF85AA",
+                        border: `0.5px solid ${liveStats.attendance === null ? "rgba(180,180,230,0.10)" : attOnTrack ? "rgba(18,192,78,0.20)" : "rgba(232,51,74,0.20)"}`
+                      }}>
+                      {liveStats.attendance === null ? "No data" : attOnTrack ? "✓ On Track" : "Needs Work"}
+                    </div>
                   </div>
-                );
-              })()}
 
-              {/* ② Avg Score */}
-              {(() => {
-                const scoreColor = liveStats.avgScore >= 80 ? "#6366f1" : liveStats.avgScore >= 60 ? "#6366f1" : "#ef4444";
-                const scoreLabel = liveStats.avgScore >= 80 ? "Excellent" : liveStats.avgScore >= 60 ? "Good" : liveStats.avgScore > 0 ? "Needs Work" : "No Data";
-                return (
-                  <div className="rounded-2xl p-4 flex flex-col"
-                    style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", minHeight: 160 }}>
-                    <span className="text-[9px] font-bold uppercase tracking-[0.18em] text-slate-500 mb-3">Avg Score</span>
-                    <div className="flex items-center gap-4 flex-1">
-                      <div className="relative">
-                        <DonutRing pct={liveStats.avgScore} color={scoreColor} size={90} stroke={9} />
-                      </div>
-                      <div className="flex-1 space-y-2">
-                        <div className={`text-[10px] font-black px-2 py-0.5 rounded-full w-fit ${
-                          liveStats.avgScore >= 80 ? "bg-indigo-500/20 text-indigo-300"
-                          : liveStats.avgScore >= 60 ? "bg-indigo-500/20 text-indigo-300"
-                          : liveStats.avgScore > 0 ? "bg-red-500/15 text-red-400" : "bg-slate-500/20 text-slate-400"
-                        }`}>{scoreLabel}</div>
-                        <div>
-                          <div className="text-[9px] text-slate-500 mb-1">Performance</div>
-                          <MiniBar pct={liveStats.avgScore} color={liveStats.avgScore >= 60 ? scoreColor : "#ef4444"} />
+                  {/* Avg Score */}
+                  <div className="p-5 flex flex-col gap-3" style={{ background: DK_CELL }}>
+                    <span className="text-[10px] font-bold uppercase tracking-[0.10em]" style={{ color: "rgba(180,180,230,0.36)" }}>Avg Score</span>
+                    <div className="flex items-center gap-3">
+                      <DonutRing pct={liveStats.avgScore} color={liveStats.avgScore >= 80 ? GREEN : liveStats.avgScore >= 60 ? IND3 : "#FF6961"} size={72} stroke={6} />
+                      <div>
+                        <div className="inline-flex items-center px-[10px] py-[4px] rounded-full text-[11px] font-bold"
+                          style={{
+                            background: liveStats.avgScore >= 80 ? "rgba(18,192,78,0.15)" : liveStats.avgScore >= 60 ? "rgba(170,170,220,0.15)" : "rgba(232,51,74,0.15)",
+                            color: liveStats.avgScore >= 80 ? "#38DC78" : liveStats.avgScore >= 60 ? "#AAAADC" : "#FF85AA",
+                            border: `0.5px solid ${liveStats.avgScore >= 80 ? "rgba(18,192,78,0.20)" : liveStats.avgScore >= 60 ? "rgba(170,170,220,0.24)" : "rgba(232,51,74,0.20)"}`
+                          }}>
+                          {liveStats.avgScore >= 80 ? "Excellent" : liveStats.avgScore >= 60 ? "Good" : liveStats.avgScore > 0 ? "Needs Work" : "No Data"}
                         </div>
-                        <div className="flex gap-1">
-                          {["C","B","A","A+"].map(g => {
-                            const active = liveStats.avgScore >= (g === "A+" ? 90 : g === "A" ? 80 : g === "B" ? 70 : 0);
-                            return <div key={g} className={`flex-1 rounded-sm text-center text-[7px] font-black py-0.5 ${active ? "bg-indigo-500/40 text-indigo-300" : "bg-white/5 text-slate-600"}`}>{g}</div>;
+                        <div className="flex gap-1 mt-2">
+                          {["C", "B", "A", "A+"].map(g => {
+                            const active = liveStats.avgScore >= (g === "A+" ? 90 : g === "A" ? 80 : g === "B" ? 60 : 0);
+                            return (
+                              <div key={g} className="w-[28px] h-[28px] rounded-[8px] flex items-center justify-center text-[11px] font-bold"
+                                style={{ background: active ? "rgba(232,51,74,0.22)" : "rgba(255,255,255,0.05)", color: active ? "#FF85AA" : "rgba(255,255,255,0.18)" }}>
+                                {g}
+                              </div>
+                            );
                           })}
                         </div>
                       </div>
                     </div>
                   </div>
-                );
-              })()}
 
-              {/* ③ Assignments */}
-              {(() => {
-                const noAsg = liveStats.pending === null;
-                const pVal = liveStats.pending ?? 0;
-                const tVal = liveStats.tests ?? 0;
-                return (
-                  <div className="rounded-2xl p-4 flex flex-col"
-                    style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", minHeight: 140 }}>
-                    <span className="text-[9px] font-bold uppercase tracking-[0.18em] text-slate-500 mb-2">Assignments</span>
-                    <div className="flex-1 flex flex-col justify-between">
-                      <div className="flex items-end gap-2">
-                        <span className={`text-4xl font-black leading-none ${noAsg ? "text-slate-500" : pVal > 3 ? "text-red-400" : pVal > 0 ? "text-amber-400" : "text-emerald-400"}`}
-                          style={{ textShadow: !noAsg && pVal === 0 ? "0 0 20px #10b98180" : "none" }}>
-                          {pendingDisplay}
-                        </span>
-                        <span className="text-[11px] text-slate-500 mb-1 font-medium">{noAsg ? "no data" : "pending"}</span>
-                      </div>
-                      <div className="space-y-2">
-                        {noAsg ? (
-                          <div className="flex items-center gap-1.5 bg-slate-500/10 border border-slate-500/20 rounded-full px-3 py-1.5 w-fit">
-                            <span className="text-[10px] font-bold text-slate-400">No assignments yet</span>
-                          </div>
-                        ) : pVal === 0 ? (
-                          <div className="flex items-center gap-1.5 bg-emerald-500/15 border border-emerald-500/25 rounded-full px-3 py-1.5 w-fit">
-                            <span className="text-[10px] font-bold text-emerald-400">All Done ✓</span>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-1.5 bg-amber-500/15 border border-amber-500/25 rounded-full px-3 py-1.5 w-fit">
-                            <span className="text-[10px] font-bold text-amber-400">{pVal} to complete</span>
-                          </div>
-                        )}
-                        {tVal > 0 && (
-                          <div className="flex items-center gap-1.5 bg-indigo-500/10 rounded-full px-2.5 py-1 w-fit">
-                            <BookOpen className="w-2.5 h-2.5 text-indigo-400" />
-                            <span className="text-[9px] text-indigo-300 font-semibold">{tVal} upcoming test{tVal > 1 ? "s" : ""}</span>
-                          </div>
-                        )}
-                      </div>
+                  {/* Assignments */}
+                  <div className="p-5 flex flex-col gap-3" style={{ background: DK_CELL }}>
+                    <span className="text-[10px] font-bold uppercase tracking-[0.10em]" style={{ color: "rgba(180,180,230,0.36)" }}>Assignments</span>
+                    <div className="text-[42px] font-bold leading-none text-white" style={{ letterSpacing: "-1.4px" }}>{pendingDisplay}</div>
+                    <div className="text-[12px]" style={{ color: "rgba(255,255,255,0.32)", letterSpacing: "-0.1px" }}>
+                      {liveStats.pending === null ? "no data" : "pending"}
+                    </div>
+                    <div className="inline-flex items-center gap-[3px] px-[9px] py-[3px] rounded-full w-fit text-[10px] font-bold"
+                      style={{
+                        background: liveStats.pending === null ? "rgba(255,255,255,0.05)" : noPending ? "rgba(18,192,78,0.15)" : "rgba(245,160,0,0.15)",
+                        color: liveStats.pending === null ? "rgba(180,180,230,0.5)" : noPending ? "#38DC78" : "#F5A000",
+                        border: `0.5px solid ${liveStats.pending === null ? "rgba(180,180,230,0.10)" : noPending ? "rgba(18,192,78,0.20)" : "rgba(245,160,0,0.20)"}`
+                      }}>
+                      {liveStats.pending === null ? "No assignments yet" : noPending ? "✓ All Done" : `${liveStats.pending} to complete`}
                     </div>
                   </div>
-                );
-              })()}
 
-              {/* ④ Recent Test */}
-              {(() => {
-                const gradeColor = liveStats.recentGrade === "A+" ? "#10b981"
-                  : liveStats.recentGrade?.startsWith("A") ? "#6366f1"
-                  : liveStats.recentGrade === "B" ? "#f59e0b" : "#64748b";
-                const gradeSteps = ["C","B","A-","A","A+"];
-                const gradeIdx = gradeSteps.indexOf(liveStats.recentGrade);
-                return (
-                  <div className="rounded-2xl p-4 flex flex-col"
-                    style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)", minHeight: 140 }}>
-                    <span className="text-[9px] font-bold uppercase tracking-[0.18em] text-slate-500 mb-2">Recent Test</span>
-                    <div className="flex-1 flex flex-col justify-between">
-                      <div className="flex items-end gap-3">
-                        <span className="text-5xl font-black leading-none"
-                          style={{ color: gradeColor, textShadow: `0 0 24px ${gradeColor}80` }}>
-                          {liveStats.recentGrade !== "N/A" ? liveStats.recentGrade : "—"}
-                        </span>
-                        <span className="text-[10px] text-slate-500 mb-1.5 truncate max-w-[80px]">{liveStats.recentSubject}</span>
-                      </div>
-                      <div className="flex gap-1 mt-2">
-                        {gradeSteps.map((g, i) => (
-                          <div key={g} className="flex-1 space-y-1">
-                            <div className={`h-1 rounded-full transition-all ${i <= gradeIdx ? "" : "bg-white/8"}`}
-                              style={{ backgroundColor: i <= gradeIdx ? gradeColor : undefined, opacity: i <= gradeIdx ? (0.4 + i * 0.15) : 1 }} />
-                            <div className={`text-center text-[7px] font-bold ${i === gradeIdx ? "text-white" : "text-slate-600"}`}>{g}</div>
+                  {/* Recent Test */}
+                  <div className="p-5 flex flex-col gap-3" style={{ background: DK_CELL }}>
+                    <span className="text-[10px] font-bold uppercase tracking-[0.10em]" style={{ color: "rgba(180,180,230,0.36)" }}>Recent Test</span>
+                    <div className="text-[42px] font-bold leading-none text-white" style={{ letterSpacing: "-1.4px" }}>
+                      {liveStats.recentGrade !== "N/A" ? liveStats.recentGrade : "—"}
+                    </div>
+                    <div className="text-[12px] truncate" style={{ color: "rgba(255,255,255,0.32)", letterSpacing: "-0.1px" }}>{liveStats.recentSubject}</div>
+                    <div className="flex gap-1">
+                      {["C", "B", "A", "A+"].map(g => {
+                        const gradeSteps = ["C", "B", "A-", "A", "A+"];
+                        const gradeIdx = gradeSteps.indexOf(liveStats.recentGrade);
+                        const chipMap: Record<string, number> = { C: 0, B: 1, A: 3, "A+": 4 };
+                        const chipIdx = chipMap[g];
+                        const active = gradeIdx >= 0 && chipIdx <= gradeIdx;
+                        return (
+                          <div key={g} className="w-[28px] h-[28px] rounded-[8px] flex items-center justify-center text-[11px] font-bold"
+                            style={{ background: active ? "rgba(232,51,74,0.22)" : "rgba(255,255,255,0.05)", color: active ? "#FF85AA" : "rgba(255,255,255,0.18)" }}>
+                            {g}
                           </div>
-                        ))}
-                      </div>
+                        );
+                      })}
                     </div>
                   </div>
-                );
-              })()}
-            </div>
-
-            {/* ── AI Narrative strip ── */}
-            <div className="rounded-xl px-4 py-2.5 flex items-center gap-3"
-              style={{ background: "rgba(99,102,241,0.07)", border: "1px solid rgba(99,102,241,0.15)" }}>
-              <BrainCircuit className="w-4 h-4 text-indigo-400 shrink-0" />
-              {aiInsights?.child_summary_narrative ? (
-                <p className="text-[11px] text-slate-400 leading-relaxed line-clamp-2">
-                  {aiInsights.child_summary_narrative}
-                </p>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <Loader2 className="w-3 h-3 text-slate-600 animate-spin shrink-0" />
-                  <p className="text-[11px] text-slate-500 italic">AI summary generating...</p>
                 </div>
-              )}
-            </div>
 
-          </div>
-        )}
-      </div>
-
-      {/* Feature 2: Weekly AI Report */}
-      <div className="bg-white border border-slate-100 rounded-2xl p-6 shadow-sm mb-4">
-
-        {/* Header */}
-        <div className="flex items-center justify-between gap-2 mb-4">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl bg-indigo-50 flex items-center justify-center">
-              <BookOpen className="w-4 h-4 text-indigo-600" />
-            </div>
-            <div>
-              <h3 className="text-sm font-bold text-slate-800">Weekly AI Report</h3>
-              <p className="text-[10px] text-slate-400 font-medium">
-                {isPrevWeekReport ? "Last week's report · New report available Friday" : "Attendance · Tests · Assignments · Performance"}
-              </p>
-            </div>
-          </div>
-
-          {/* Fri/Sat/Sun: show generate or regenerate */}
-          {weekConfig.canGenerate && !weeklyReport && (
-            <button
-              onClick={handleGenerateWeeklyReport}
-              disabled={weeklyLoading || dataLoading}
-              className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-xl transition-all"
-            >
-              {weeklyLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
-              {weeklyLoading ? "Generating..." : "Generate Report"}
-            </button>
-          )}
-          {weekConfig.canGenerate && weeklyReport && (
-            <button onClick={() => setWeeklyReport(null)} className="text-[10px] text-slate-400 hover:text-slate-600 font-medium underline">
-              Regenerate
-            </button>
-          )}
-
-          {/* Mon–Thu: locked badge */}
-          {!weekConfig.canGenerate && (
-            <span className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 text-slate-400 text-[11px] font-semibold rounded-xl">
-              <Clock className="w-3 h-3" />
-              Opens Friday
-              {weekConfig.daysLeft > 0 && ` · ${weekConfig.daysLeft}d`}
-            </span>
-          )}
-        </div>
-
-        {/* Loading state */}
-        {weeklyLoading && (
-          <div className="flex flex-col items-center justify-center py-8 gap-3">
-            <Loader2 className="w-6 h-6 text-indigo-400 animate-spin" />
-            <p className="text-xs text-slate-400">Analysing {childFirstName}'s week — attendance, tests & assignments...</p>
-          </div>
-        )}
-
-        {/* Empty state — no report yet, not loading */}
-        {!weeklyReport && !weeklyLoading && (
-          <div className="flex flex-col items-center justify-center py-8 gap-3 text-center">
-            <div className="w-12 h-12 rounded-2xl bg-indigo-50 flex items-center justify-center">
-              <BookOpen className="w-6 h-6 text-indigo-300" />
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-slate-600">
-                {weekConfig.canGenerate ? `Get ${childFirstName}'s Weekly Digest` : `Report available from Friday`}
-              </p>
-              <p className="text-xs text-slate-400 mt-1">
-                {weekConfig.canGenerate
-                  ? `Click "Generate Report" to see this week's attendance, tests, assignments & AI tips.`
-                  : `You can generate ${childFirstName}'s weekly report every Friday, Saturday & Sunday.`}
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Report content */}
-        {weeklyReport && !weeklyLoading && (
-          <div className="space-y-4">
-            {isPrevWeekReport && (
-              <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 rounded-lg border border-slate-100">
-                <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                <p className="text-[11px] text-slate-500">This is last week's report. A new report can be generated this Friday.</p>
-              </div>
+                {/* AI Insight Strip */}
+                <div className="relative z-10 px-7 py-[14px] flex items-start gap-3" style={{ borderTop: "0.5px solid rgba(180,180,230,0.07)", background: "rgba(255,255,255,0.016)" }}>
+                  <BrainCircuit className="w-4 h-4 shrink-0 mt-[2px]" style={{ color: IND3 }} />
+                  {aiInsights?.child_summary_narrative ? (
+                    <p className="text-[13px] leading-[1.65]" style={{ color: "rgba(180,180,230,0.62)", letterSpacing: "-0.1px" }}>
+                      <strong style={{ color: "rgba(255,255,255,0.90)", fontWeight: 600 }}>{studentData?.name}</strong>{" "}
+                      {aiInsights.child_summary_narrative.replace(studentData?.name || "", "").trim()}
+                    </p>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <Loader2 className="w-3 h-3 animate-spin" style={{ color: IND3 }} />
+                      <p className="text-[12px] italic" style={{ color: "rgba(180,180,230,0.4)" }}>AI summary generating...</p>
+                    </div>
+                  )}
+                </div>
+              </>
             )}
+          </div>
 
-            {/* AI Message bubble */}
-            <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4">
-              <div className="flex items-center gap-1.5 mb-2">
-                <Sparkles className="w-3 h-3 text-indigo-400" />
-                <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400">AI Message</span>
-              </div>
-              <p className="text-sm text-indigo-900 leading-relaxed">{weeklyReport.message}</p>
-            </div>
+          {/* ── Row 3: Recent Alerts + Weekly Report Card ── */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
 
-            {/* Stats row */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="bg-slate-50 rounded-xl p-3">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Attendance</p>
-                <p className="text-xs text-slate-700 leading-snug">{weeklyReport.attendance_summary}</p>
-              </div>
-              <div className="bg-slate-50 rounded-xl p-3">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Tests</p>
-                <p className="text-xs text-slate-700 leading-snug">{weeklyReport.test_analysis}</p>
-              </div>
-              <div className="bg-slate-50 rounded-xl p-3">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Assignments</p>
-                <p className="text-xs text-slate-700 leading-snug">{weeklyReport.assignment_status}</p>
-              </div>
-            </div>
-
-            {/* Overall Performance */}
-            {weeklyReport.overall_performance && (
-              <div className={`flex items-center justify-between p-4 rounded-xl border ${
-                weeklyReport.overall_performance.verdict === "Excellent" ? "bg-emerald-50 border-emerald-100" :
-                weeklyReport.overall_performance.verdict === "Good" ? "bg-blue-50 border-blue-100" :
-                weeklyReport.overall_performance.verdict === "Needs Attention" ? "bg-amber-50 border-amber-100" :
-                "bg-red-50 border-red-100"
-              }`}>
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">Overall Performance</p>
-                  <p className="text-sm font-bold text-slate-800">{weeklyReport.overall_performance.verdict}</p>
-                  <p className="text-xs text-slate-500 mt-0.5">{weeklyReport.overall_performance.score_context}</p>
-                </div>
-                <div className={`px-3 py-1.5 rounded-full text-xs font-bold ${
-                  weeklyReport.overall_performance.trend === "Improving" ? "bg-emerald-100 text-emerald-700" :
-                  weeklyReport.overall_performance.trend === "Stable" ? "bg-blue-100 text-blue-700" :
-                  "bg-amber-100 text-amber-700"
-                }`}>
-                  {weeklyReport.overall_performance.trend === "Improving" ? "↑" : weeklyReport.overall_performance.trend === "Declining" ? "↓" : "→"} {weeklyReport.overall_performance.trend}
-                </div>
-              </div>
-            )}
-
-            {/* AI Improvement Tips */}
-            {weeklyReport.improvement_tips?.length > 0 && (
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">AI Improvement Tips</p>
-                <div className="space-y-2">
-                  {weeklyReport.improvement_tips.map((t: { tip: string; reason: string }, i: number) => (
-                    <div key={i} className="flex items-start gap-2.5 p-3 bg-amber-50 rounded-xl border border-amber-100">
-                      <Lightbulb className="w-3.5 h-3.5 text-amber-500 mt-0.5 shrink-0" />
+            {/* Recent Alerts */}
+            <div className="bg-white rounded-[22px] p-6" style={{ boxShadow: SH, border: `0.5px solid ${IND_BDR}` }}>
+              <h3 className="text-[18px] font-bold mb-5" style={{ color: T1, letterSpacing: "-0.4px" }}>Recent Alerts</h3>
+              {recentAlerts.length > 0 ? (
+                <div className="space-y-3">
+                  {recentAlerts.map(alert => (
+                    <div key={alert.id} className="flex items-start gap-3 p-3 rounded-xl"
+                      style={{ background: alert.urgent ? "rgba(245,160,0,0.08)" : "rgba(18,192,78,0.08)" }}>
+                      <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-0.5"
+                        style={{ background: alert.urgent ? "rgba(245,160,0,0.15)" : "rgba(18,192,78,0.15)", color: alert.urgent ? ORANGE : GREEN }}>
+                        {alert.urgent ? <Clock className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />}
+                      </div>
                       <div>
-                        <p className="text-xs font-semibold text-slate-800">{t.tip}</p>
-                        <p className="text-[11px] text-slate-500 mt-0.5">{t.reason}</p>
+                        <p className="text-[14px] font-medium leading-snug" style={{ color: T1 }}>{alert.title}</p>
+                        <p className="text-[12px] mt-0.5" style={{ color: T3 }}>{timeAgo(alert.time)}</p>
                       </div>
                     </div>
                   ))}
                 </div>
-              </div>
-            )}
-
-            {/* Download PDF button */}
-            <div className="flex justify-end pt-2 border-t border-slate-100">
-              <button
-                onClick={handleDownloadPDF}
-                disabled={pdfDownloading}
-                className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-xl transition-all"
-              >
-                {pdfDownloading
-                  ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Generating PDF...</>
-                  : <><Sparkles className="w-3.5 h-3.5 text-amber-400" /> Download PDF Report</>
-                }
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Feature 3: AI Parenting Tips */}
-      <div className="bg-white border border-slate-100 rounded-2xl p-6 shadow-sm">
-        <div className="flex items-center gap-2 mb-4">
-          <div className="w-8 h-8 rounded-xl bg-amber-50 flex items-center justify-center">
-            <Lightbulb className="w-4 h-4 text-amber-500" />
-          </div>
-          <div>
-            <h3 className="text-sm font-bold text-slate-800">AI Parenting Tips</h3>
-            <p className="text-[10px] text-slate-400 font-medium">Based on {childFirstName}'s current data</p>
-          </div>
-        </div>
-
-        {(() => {
-          const tips = aiInsights?.parenting_tips?.length > 0 ? aiInsights.parenting_tips : smartTips;
-          const isAI = aiInsights?.parenting_tips?.length > 0;
-          return tips.length > 0 ? (
-            <div className="space-y-3">
-              {!isAI && (
-                <p className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold mb-1">Based on {childFirstName}'s live data</p>
+              ) : (
+                <div className="flex flex-col items-center gap-3 py-10">
+                  <div className="w-[60px] h-[60px] rounded-[18px] flex items-center justify-center"
+                    style={{ background: IND_SOFT, border: `0.5px solid ${IND_BDR}`, boxShadow: "0 0 0 5px rgba(48,48,110,0.03)" }}>
+                    <ShieldCheck className="w-7 h-7" style={{ color: T4 }} />
+                  </div>
+                  <p className="text-[14px]" style={{ color: T3 }}>No alerts right now</p>
+                </div>
               )}
-              {tips.map((item: { tip: string; reason: string }, i: number) => (
-                <div key={i} className="flex items-start gap-3 p-3 bg-amber-50/60 rounded-xl border border-amber-100">
-                  <div className="w-6 h-6 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">
-                    {i + 1}
+            </div>
+
+            {/* Weekly AI Report header */}
+            <div className="bg-white rounded-[22px] px-6 py-6" style={{ boxShadow: SH, border: `0.5px solid ${IND_BDR}` }}>
+              <div className="flex items-center justify-between gap-3 mb-[14px]">
+                <div className="flex items-center gap-3">
+                  <div className="w-[46px] h-[46px] rounded-[14px] flex items-center justify-center"
+                    style={{ background: IND_SOFT, border: `0.5px solid ${IND_BDR}` }}>
+                    <BookOpen className="w-5 h-5" style={{ color: IND }} />
                   </div>
                   <div>
-                    <p className="text-sm font-semibold text-slate-800">{item.tip}</p>
-                    <p className="text-xs text-slate-500 mt-0.5">{item.reason}</p>
+                    <div className="text-[16px] font-bold" style={{ color: T1, letterSpacing: "-0.3px" }}>Weekly AI Report</div>
+                    <div className="text-[12px] mt-0.5" style={{ color: T3 }}>
+                      {isPrevWeekReport ? "Last week's report" : weekConfig.canGenerate ? (weeklyReport ? "This week's digest" : "Generate this week's report") : "New report available Friday"}
+                    </div>
                   </div>
+                </div>
+                {weekConfig.canGenerate && !weeklyReport ? (
+                  <button onClick={handleGenerateWeeklyReport} disabled={weeklyLoading || dataLoading}
+                    className="flex items-center gap-2 px-4 py-[10px] rounded-[12px] text-[12px] font-semibold text-white disabled:opacity-50 transition-transform hover:scale-[1.02]"
+                    style={{ background: IND, boxShadow: "0 4px 14px rgba(48,48,110,0.28)" }}>
+                    {weeklyLoading ? <Loader2 className="w-[14px] h-[14px] animate-spin" /> : <Sparkles className="w-[14px] h-[14px]" />}
+                    {weeklyLoading ? "Generating..." : "Generate"}
+                  </button>
+                ) : weekConfig.canGenerate && weeklyReport ? (
+                  <button onClick={() => setWeeklyReport(null)}
+                    className="text-[11px] font-medium px-3 py-[8px] rounded-[10px]"
+                    style={{ color: T3, border: `0.5px solid ${IND_BDR}`, background: "white" }}>
+                    Regenerate
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-1 px-3 py-[8px] rounded-[12px] text-[11px] font-semibold whitespace-nowrap"
+                    style={{ background: "#E5E5EC", color: T3, border: `0.5px solid ${IND_BDR}` }}>
+                    <Clock className="w-[12px] h-[12px]" />
+                    Fri{weekConfig.daysLeft > 0 ? ` · ${weekConfig.daysLeft}d` : ""}
+                  </div>
+                )}
+              </div>
+
+              {weeklyLoading && (
+                <div className="flex flex-col items-center py-6 gap-3">
+                  <Loader2 className="w-6 h-6 animate-spin" style={{ color: IND }} />
+                  <p className="text-[12px]" style={{ color: T3 }}>Analysing {childFirstName}'s week...</p>
+                </div>
+              )}
+
+              {!weeklyReport && !weeklyLoading && (
+                <div className="flex items-start gap-2 pt-[14px]" style={{ borderTop: `0.5px solid ${SEP}` }}>
+                  <Clock className="w-[15px] h-[15px] shrink-0 mt-0.5" style={{ color: T4 }} />
+                  <p className="text-[13px] leading-[1.6]" style={{ color: T3, letterSpacing: "-0.1px" }}>
+                    {weekConfig.canGenerate
+                      ? `Click "Generate" to get ${childFirstName}'s weekly digest.`
+                      : `You can generate ${childFirstName}'s weekly report every Friday, Saturday & Sunday.`}
+                  </p>
+                </div>
+              )}
+
+              {weeklyReport && !weeklyLoading && isPrevWeekReport && (
+                <div className="flex items-start gap-2 pt-[14px]" style={{ borderTop: `0.5px solid ${SEP}` }}>
+                  <Clock className="w-[15px] h-[15px] shrink-0 mt-0.5" style={{ color: T4 }} />
+                  <p className="text-[13px] leading-[1.55]" style={{ color: T3 }}>
+                    This is last week's report. A new report can be generated this Friday.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* ── AI Message gradient card ── */}
+          {weeklyReport && !weeklyLoading && (
+            <div className="rounded-[24px] px-7 py-6 relative overflow-hidden mb-5"
+              style={{
+                background: `linear-gradient(138deg, ${IND} 0%, ${IND2} 100%)`,
+                border: "0.5px solid rgba(48,48,110,0.22)",
+                boxShadow: "0 6px 28px rgba(48,48,110,0.22), 0 2px 8px rgba(48,48,110,0.14)"
+              }}>
+              <div className="absolute -top-10 -right-8 w-[200px] h-[200px] rounded-full pointer-events-none"
+                style={{ background: "radial-gradient(circle, rgba(255,255,255,0.10) 0%, transparent 65%)" }} />
+              <div className="absolute inset-0 pointer-events-none" style={{
+                backgroundImage: "linear-gradient(rgba(255,255,255,0.014) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.014) 1px, transparent 1px)",
+                backgroundSize: "26px 26px"
+              }} />
+              <div className="relative z-10">
+                <div className="flex items-center gap-[6px] text-[10px] font-bold uppercase tracking-[0.10em] mb-3" style={{ color: "rgba(255,255,255,0.52)" }}>
+                  <Sparkles className="w-3 h-3" />
+                  AI Message
+                </div>
+                <p className="text-[16px] leading-[1.72] font-normal max-w-[900px]" style={{ color: "rgba(255,255,255,0.92)", letterSpacing: "-0.1px" }}>
+                  {weeklyReport.message}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* ── Detail Sections (3-col table) ── */}
+          {weeklyReport && !weeklyLoading && (
+            <div className="bg-white rounded-[22px] overflow-hidden grid grid-cols-1 lg:grid-cols-3 mb-5" style={{ boxShadow: SH, border: `0.5px solid ${IND_BDR}` }}>
+              {[
+                { tag: "Attendance", text: weeklyReport.attendance_summary },
+                { tag: "Tests", text: weeklyReport.test_analysis },
+                { tag: "Assignments", text: weeklyReport.assignment_status },
+              ].map(({ tag, text }, i, arr) => (
+                <div key={tag} className="px-6 py-5 flex flex-col gap-[6px]"
+                  style={{
+                    borderRight: i < arr.length - 1 ? `0.5px solid ${SEP}` : "none",
+                    borderBottom: i < arr.length - 1 ? `0.5px solid ${SEP}` : "none",
+                  }}>
+                  <span className="text-[10px] font-bold uppercase tracking-[0.09em]" style={{ color: IND3 }}>{tag}</span>
+                  <p className="text-[13px] leading-[1.58]" style={{ color: T2, letterSpacing: "-0.1px" }}>{text}</p>
                 </div>
               ))}
             </div>
-          ) : (
-            <div className="flex items-center gap-3 py-4">
-              <Loader2 className="w-4 h-4 text-slate-400 animate-spin shrink-0" />
-              <p className="text-sm text-slate-400 italic">Loading {childFirstName}'s data...</p>
-            </div>
-          );
-        })()}
-      </div>
+          )}
 
-      {/* Hidden PDF render target — off-screen, captured by html2canvas */}
-      {weeklyReport && pdfData && (
-        <div style={{ position: "fixed", top: "-9999px", left: "-9999px", zIndex: -1 }}>
-          <WeeklyReportPDF
-            ref={pdfRef}
-            report={weeklyReport}
-            studentName={pdfData.child_name}
-            grade={pdfData.grade}
-            attendance={pdfData.attendance}
-            tests={pdfData.tests}
-            assignments={pdfData.assignments}
-            avgScore={pdfData.overall_avg}
-            weekEnd={pdfData.weekEnd}
-            onDownload={() => {}}
-          />
+          {/* ── Overall Performance + Tips row ── */}
+          {weeklyReport && !weeklyLoading && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
+
+              {/* Overall Performance */}
+              {weeklyReport?.overall_performance ? (
+                <div className="bg-white rounded-[22px] px-6 py-6 flex items-start justify-between gap-4 relative overflow-hidden"
+                  style={{ border: `0.5px solid ${ORANGE_B}`, boxShadow: SH }}>
+                  <div className="absolute -top-5 -right-5 w-[80px] h-[80px] rounded-full pointer-events-none"
+                    style={{ background: "radial-gradient(circle, rgba(245,160,0,0.10) 0%, transparent 70%)" }} />
+                  <div className="relative z-10">
+                    <div className="text-[10px] font-bold uppercase tracking-[0.09em] mb-[5px]" style={{ color: ORANGE }}>Overall Performance</div>
+                    <div className="text-[20px] font-bold" style={{ color: T1, letterSpacing: "-0.3px" }}>{weeklyReport.overall_performance.verdict}</div>
+                    <p className="text-[13px] mt-[6px] leading-[1.58]" style={{ color: T3, letterSpacing: "-0.1px" }}>{weeklyReport.overall_performance.score_context}</p>
+                  </div>
+                  <div className="flex items-center gap-1 px-[14px] py-[9px] rounded-[14px] text-[12px] font-bold shrink-0 relative z-10"
+                    style={{
+                      background: weeklyReport.overall_performance.trend === "Declining" ? ORANGE_S : GREEN_S,
+                      border: `0.5px solid ${weeklyReport.overall_performance.trend === "Declining" ? ORANGE_B : GREEN_B}`,
+                      color: weeklyReport.overall_performance.trend === "Declining" ? "#905800" : "#0A6A2E",
+                    }}>
+                    <TrendingUp className={`w-3 h-3 ${weeklyReport.overall_performance.trend === "Declining" ? "rotate-180" : ""}`} />
+                    {weeklyReport.overall_performance.trend}
+                  </div>
+                </div>
+              ) : <div />}
+
+              {/* Download PDF button */}
+              <button onClick={handleDownloadPDF} disabled={pdfDownloading}
+                className="rounded-[22px] py-[22px] px-6 flex items-center justify-center gap-3 text-[15px] font-bold text-white disabled:opacity-50 transition-transform hover:scale-[1.01] relative overflow-hidden"
+                style={{ background: `linear-gradient(135deg, ${IND} 0%, #1C1C4A 100%)`, boxShadow: SH_BTN, letterSpacing: "-0.2px" }}>
+                <div className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(135deg, rgba(255,255,255,0.13) 0%, transparent 52%)" }} />
+                <span className="relative z-10 flex items-center gap-3">
+                  {pdfDownloading ? (
+                    <><Loader2 className="w-[18px] h-[18px] animate-spin" /> Generating PDF...</>
+                  ) : (
+                    <><Download className="w-[18px] h-[18px]" /> Download PDF Report</>
+                  )}
+                </span>
+              </button>
+            </div>
+          )}
+
+          {/* ── AI Improvement Tips ── */}
+          {weeklyReport?.improvement_tips?.length > 0 && (
+            <div className="mb-5">
+              <div className="text-[10px] font-bold uppercase tracking-[0.10em] mb-3 px-1" style={{ color: T4 }}>
+                AI Improvement Tips
+              </div>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                {weeklyReport.improvement_tips.map((t: { tip: string; reason: string }, i: number) => (
+                  <div key={i} className="bg-white rounded-[20px] px-5 py-5 flex items-start gap-4 transition-transform hover:-translate-y-0.5"
+                    style={{ boxShadow: SH, border: `0.5px solid ${IND_BDR}` }}>
+                    <div className="w-[46px] h-[46px] rounded-[14px] flex items-center justify-center shrink-0 text-[22px]"
+                      style={{
+                        background: i === 0 ? "rgba(255,215,0,0.12)" : IND_SOFT,
+                        border: `0.5px solid ${i === 0 ? "rgba(255,215,0,0.22)" : IND_BDR}`
+                      }}>
+                      {i === 0 ? "💡" : "🎯"}
+                    </div>
+                    <div>
+                      <div className="text-[15px] font-semibold leading-[1.35]" style={{ color: T1, letterSpacing: "-0.2px" }}>{t.tip}</div>
+                      <p className="text-[13px] mt-[4px] leading-[1.5]" style={{ color: T3, letterSpacing: "-0.1px" }}>{t.reason}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── AI Parenting Tips ── */}
+          <div className="bg-white rounded-[22px] overflow-hidden" style={{ boxShadow: SH, border: `0.5px solid ${IND_BDR}` }}>
+            <div className="flex items-center gap-3 px-6 py-5 relative overflow-hidden"
+              style={{ background: `linear-gradient(135deg, ${IND} 0%, ${IND2} 100%)`, borderBottom: `0.5px solid ${IND_BDR}` }}>
+              <div className="absolute -top-7 -right-4 w-[140px] h-[140px] rounded-full pointer-events-none"
+                style={{ background: "radial-gradient(circle, rgba(255,255,255,0.09) 0%, transparent 65%)" }} />
+              <div className="absolute inset-0 pointer-events-none" style={{
+                backgroundImage: "linear-gradient(rgba(255,255,255,0.014) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.014) 1px, transparent 1px)",
+                backgroundSize: "24px 24px"
+              }} />
+              <span className="text-[26px] relative z-10">💡</span>
+              <div className="relative z-10">
+                <div className="text-[17px] font-bold text-white" style={{ letterSpacing: "-0.3px" }}>AI Parenting Tips</div>
+                <div className="text-[12px] mt-0.5" style={{ color: "rgba(255,255,255,0.52)" }}>Based on {childFirstName}'s current data</div>
+              </div>
+            </div>
+
+            {(() => {
+              const tips = aiInsights?.parenting_tips?.length > 0 ? aiInsights.parenting_tips : smartTips;
+              return tips.length > 0 ? (
+                <div className="grid grid-cols-1 lg:grid-cols-3">
+                  {tips.map((item: { tip: string; reason: string }, i: number, arr: any[]) => (
+                    <div key={i} className="px-6 py-5 flex items-start gap-3"
+                      style={{
+                        borderRight: i < arr.length - 1 ? `0.5px solid ${SEP}` : "none",
+                        borderBottom: i < arr.length - 1 ? `0.5px solid ${SEP}` : "none",
+                      }}>
+                      <div className="w-8 h-8 rounded-[10px] flex items-center justify-center text-[13px] font-bold shrink-0 mt-0.5"
+                        style={{ background: IND_SOFT, border: `0.5px solid ${IND_BDR}`, color: IND }}>
+                        {i + 1}
+                      </div>
+                      <div>
+                        <div className="text-[14px] font-semibold" style={{ color: T1, letterSpacing: "-0.2px" }}>{item.tip}</div>
+                        <p className="text-[12px] mt-[4px] leading-[1.5]" style={{ color: T3, letterSpacing: "-0.1px" }}>{item.reason}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="px-6 py-10 flex items-center gap-3 justify-center">
+                  <Loader2 className="w-5 h-5 animate-spin" style={{ color: IND }} />
+                  <p className="text-[14px] italic" style={{ color: T3 }}>Loading {childFirstName}'s tips...</p>
+                </div>
+              );
+            })()}
+          </div>
+
+          {/* Hidden PDF render target */}
+          {weeklyReport && pdfData && (
+            <div style={{ position: "fixed", top: "-9999px", left: "-9999px", zIndex: -1 }}>
+              <WeeklyReportPDF
+                ref={pdfRef}
+                report={weeklyReport}
+                studentName={pdfData.child_name}
+                grade={pdfData.grade}
+                attendance={pdfData.attendance}
+                tests={pdfData.tests}
+                assignments={pdfData.assignments}
+                avgScore={pdfData.overall_avg}
+                weekEnd={pdfData.weekEnd}
+                onDownload={() => {}}
+              />
+            </div>
+          )}
+
         </div>
-      )}
-    </div>
-  );
+      </div>
+    );
+  }
+
 };
 
 export default DashboardPage;
