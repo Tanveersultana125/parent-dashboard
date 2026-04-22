@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/AuthContext";
 import { CheckCircle, AlertCircle, Calendar, Star, Clock, Loader2, ShieldCheck, BrainCircuit, Sparkles, TrendingUp, BookOpen, Lightbulb, Download } from "lucide-react";
 import { ParentAIController } from "../ai/controller/ai-controller";
@@ -150,6 +151,7 @@ function ScoreArc({ pct, color, size = 80 }: { pct: number; color: string; size?
 
 const DashboardPage = () => {
   const { studentData, user } = useAuth();
+  const navigate = useNavigate();
   const isMobile = useIsMobile();
   const settings = useSchoolSettings();
   // Real academic year — replaces two hardcoded "2025-26" strings.
@@ -364,7 +366,7 @@ const DashboardPage = () => {
     const u5 = onSnapshot(sq("risks"), snap => {
       const unique = snap.docs
         .map(d => ({ id: d.id, ...d.data() as any }))
-        .sort((a, b) => (b.timestamp?.toDate()?.getTime() || 0) - (a.timestamp?.toDate()?.getTime() || 0));
+        .sort((a, b) => ((b.timestamp?.toDate()?.getTime() ?? 0) - (a.timestamp?.toDate()?.getTime() ?? 0)));
       setRecentAlerts(unique.slice(0, 3).map(d => ({ id: d.id, title: d.issue, time: d.timestamp?.toDate() || new Date(), urgent: d.severity === "Critical" })));
     }, onListenerError("risks"));
 
@@ -577,8 +579,8 @@ const DashboardPage = () => {
   const greeting = currentTime.getHours() < 12 ? "Good Morning" : currentTime.getHours() < 17 ? "Good Afternoon" : "Good Evening";
   const parentFirstName = user?.displayName?.split(" ")[0] || "Parent";
   const childFirstName = studentData?.name?.split(" ")[0] || "your child";
-  const userInitials = getInitials(user?.displayName || "RS");
-  const studentInitials = getInitials(studentData?.name || "AS");
+  const userInitials = getInitials(user?.displayName || "") || "P";
+  const studentInitials = getInitials(studentData?.name || "") || "S";
   const weekConfig = getWeekConfig();
   const isPrevWeekReport = !!weeklyReport && !weekConfig.canGenerate && !localStorage.getItem(weekConfig.thisWeekKey);
 
@@ -643,7 +645,13 @@ const DashboardPage = () => {
         </div>
 
         {/* ── Academic Health Card ── */}
-        <div className="mx-5 mt-[22px] bg-white rounded-[28px] p-6 relative overflow-hidden"
+        <div
+          role="button"
+          tabIndex={0}
+          aria-label="Open performance page"
+          onClick={() => navigate("/performance")}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("/performance"); } }}
+          className="mx-5 mt-[22px] bg-white rounded-[28px] p-6 relative overflow-hidden cursor-pointer active:scale-[0.98] transition-transform focus:outline-none focus-visible:ring-2 focus-visible:ring-[#30306E]/40"
           style={{ boxShadow: SH_LG, border: `0.5px solid ${IND_BDR}` }}>
           <div className="absolute -top-[70px] -right-[50px] w-[220px] h-[220px] rounded-full pointer-events-none"
             style={{ background: "radial-gradient(circle, rgba(48,48,110,0.05) 0%, transparent 70%)" }} />
@@ -695,12 +703,19 @@ const DashboardPage = () => {
         {/* ── Stats Grid 2×2 ── */}
         <div className="grid grid-cols-2 gap-3 mx-5 mt-[14px]">
           {[
-            { icon: CheckCircle, iconColor: GREEN, bg: GREEN_S, border: "rgba(18,192,78,0.20)", glow: "rgba(18,192,78,0.14)", label: "Attendance", value: attDisplay, status: liveStats.attendance === null ? "No records yet" : attOnTrack ? "On track ✓" : "Below target", statusColor: liveStats.attendance === null ? T4 : attOnTrack ? GREEN : ORANGE },
-            { icon: AlertCircle, iconColor: ORANGE, bg: ORANGE_S, border: "rgba(245,160,0,0.20)", glow: "rgba(245,160,0,0.14)", label: "Pending Work", value: pendingDisplay, status: liveStats.pending === null ? "No assignments yet" : noPending ? "All clear ✓" : "Due this week", statusColor: liveStats.pending === null ? T4 : noPending ? GREEN : ORANGE },
-            { icon: Calendar, iconColor: IND, bg: IND_SOFT, border: IND_BDR, glow: "rgba(48,48,110,0.09)", label: "Upcoming Tests", value: testsDisplay, status: liveStats.tests === null ? "No tests scheduled" : "Next 7 days", statusColor: T4 },
-            { icon: Star, iconColor: ROSE, bg: ROSE_S, border: "rgba(255,110,168,0.20)", glow: "rgba(255,110,168,0.14)", label: "Recent Grade", value: liveStats.recentGrade !== "N/A" ? liveStats.recentGrade : "—", status: liveStats.recentSubject, statusColor: T4 },
-          ].map(({ icon: Icon, iconColor, bg, border, glow, label, value, status, statusColor }) => (
-            <div key={label} className="bg-white rounded-[22px] px-4 pt-[18px] pb-[18px] relative overflow-hidden active:scale-[0.96] transition-transform"
+            { icon: CheckCircle, iconColor: GREEN, bg: GREEN_S, border: "rgba(18,192,78,0.20)", glow: "rgba(18,192,78,0.14)", label: "Attendance", value: attDisplay, status: liveStats.attendance === null ? "No records yet" : attOnTrack ? "On track ✓" : "Below target", statusColor: liveStats.attendance === null ? T4 : attOnTrack ? GREEN : ORANGE, route: "/attendance" },
+            { icon: AlertCircle, iconColor: ORANGE, bg: ORANGE_S, border: "rgba(245,160,0,0.20)", glow: "rgba(245,160,0,0.14)", label: "Pending Work", value: pendingDisplay, status: liveStats.pending === null ? "No assignments yet" : noPending ? "All clear ✓" : "Due this week", statusColor: liveStats.pending === null ? T4 : noPending ? GREEN : ORANGE, route: "/assignments" },
+            { icon: Calendar, iconColor: IND, bg: IND_SOFT, border: IND_BDR, glow: "rgba(48,48,110,0.09)", label: "Upcoming Tests", value: testsDisplay, status: liveStats.tests === null ? "No tests scheduled" : "Next 7 days", statusColor: T4, route: "/tests" },
+            { icon: Star, iconColor: ROSE, bg: ROSE_S, border: "rgba(255,110,168,0.20)", glow: "rgba(255,110,168,0.14)", label: "Recent Grade", value: liveStats.recentGrade !== "N/A" ? liveStats.recentGrade : "—", status: liveStats.recentSubject, statusColor: T4, route: "/tests" },
+          ].map(({ icon: Icon, iconColor, bg, border, glow, label, value, status, statusColor, route }) => (
+            <div
+              key={label}
+              role="button"
+              tabIndex={0}
+              aria-label={`Open ${label} page`}
+              onClick={() => navigate(route)}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate(route); } }}
+              className="bg-white rounded-[22px] px-4 pt-[18px] pb-[18px] relative overflow-hidden cursor-pointer active:scale-[0.96] transition-transform focus:outline-none focus-visible:ring-2 focus-visible:ring-[#30306E]/40"
               style={{ boxShadow: SH, border: `0.5px solid ${IND_BDR}` }}>
               <div className="absolute -top-[18px] -right-[18px] w-[72px] h-[72px] rounded-full pointer-events-none"
                 style={{ background: `radial-gradient(circle, ${glow} 0%, transparent 70%)`, opacity: 0.55 }} />
@@ -749,7 +764,13 @@ const DashboardPage = () => {
               {/* 2×2 Metrics Grid */}
               <div className="relative z-10 grid grid-cols-2" style={{ gap: "1px", background: "rgba(180,180,230,0.07)" }}>
                 {/* Attendance */}
-                <div className="p-[18px] flex flex-col gap-[10px]" style={{ background: DK_CELL }}>
+                <div
+                  role="button"
+                  tabIndex={0}
+                  aria-label="Open attendance page"
+                  onClick={() => navigate("/attendance")}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("/attendance"); } }}
+                  className="p-[18px] flex flex-col gap-[10px] cursor-pointer active:opacity-80 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-[#6666C0]/60" style={{ background: DK_CELL }}>
                   <span className="text-[9px] font-bold uppercase tracking-[0.10em]" style={{ color: "rgba(180,180,230,0.36)" }}>Attendance</span>
                   <div className="flex items-center gap-[10px]">
                     <DonutRing pct={liveStats.attendance ?? 0} color={attOnTrack ? GREEN : ORANGE} size={56} stroke={5} />
@@ -772,7 +793,13 @@ const DashboardPage = () => {
                 </div>
 
                 {/* Avg Score */}
-                <div className="p-[18px] flex flex-col gap-[10px]" style={{ background: DK_CELL }}>
+                <div
+                  role="button"
+                  tabIndex={0}
+                  aria-label="Open performance page"
+                  onClick={() => navigate("/performance")}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("/performance"); } }}
+                  className="p-[18px] flex flex-col gap-[10px] cursor-pointer active:opacity-80 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-[#6666C0]/60" style={{ background: DK_CELL }}>
                   <span className="text-[9px] font-bold uppercase tracking-[0.10em]" style={{ color: "rgba(180,180,230,0.36)" }}>Avg Score</span>
                   <div className="flex items-center gap-[10px]">
                     <DonutRing pct={liveStats.avgScore} color={liveStats.avgScore >= 80 ? GREEN : liveStats.avgScore >= 60 ? IND3 : "#FF6961"} size={56} stroke={5} />
@@ -801,7 +828,13 @@ const DashboardPage = () => {
                 </div>
 
                 {/* Assignments */}
-                <div className="p-[18px] flex flex-col gap-[10px]" style={{ background: DK_CELL }}>
+                <div
+                  role="button"
+                  tabIndex={0}
+                  aria-label="Open assignments page"
+                  onClick={() => navigate("/assignments")}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("/assignments"); } }}
+                  className="p-[18px] flex flex-col gap-[10px] cursor-pointer active:opacity-80 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-[#6666C0]/60" style={{ background: DK_CELL }}>
                   <span className="text-[9px] font-bold uppercase tracking-[0.10em]" style={{ color: "rgba(180,180,230,0.36)" }}>Assignments</span>
                   <div className="text-[34px] font-bold leading-none text-white" style={{ letterSpacing: "-1.2px" }}>{pendingDisplay}</div>
                   <div className="text-[11px]" style={{ color: "rgba(255,255,255,0.32)", letterSpacing: "-0.1px" }}>
@@ -818,7 +851,13 @@ const DashboardPage = () => {
                 </div>
 
                 {/* Recent Test */}
-                <div className="p-[18px] flex flex-col gap-[10px]" style={{ background: DK_CELL }}>
+                <div
+                  role="button"
+                  tabIndex={0}
+                  aria-label="Open tests page"
+                  onClick={() => navigate("/tests")}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("/tests"); } }}
+                  className="p-[18px] flex flex-col gap-[10px] cursor-pointer active:opacity-80 transition-opacity focus:outline-none focus-visible:ring-2 focus-visible:ring-[#6666C0]/60" style={{ background: DK_CELL }}>
                   <span className="text-[9px] font-bold uppercase tracking-[0.10em]" style={{ color: "rgba(180,180,230,0.36)" }}>Recent Test</span>
                   <div className="text-[34px] font-bold leading-none text-white" style={{ letterSpacing: "-1.2px" }}>
                     {liveStats.recentGrade !== "N/A" ? liveStats.recentGrade : "—"}
@@ -862,7 +901,13 @@ const DashboardPage = () => {
         </div>
 
         {/* ── Profile Card (Indigo gradient) ── */}
-        <div className="mx-5 mt-5 rounded-[28px] p-6 relative overflow-hidden"
+        <div
+          role="button"
+          tabIndex={0}
+          aria-label="Open my child profile"
+          onClick={() => navigate("/my-child")}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("/my-child"); } }}
+          className="mx-5 mt-5 rounded-[28px] p-6 relative overflow-hidden cursor-pointer active:scale-[0.98] transition-transform focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
           style={{
             background: `linear-gradient(140deg, ${IND} 0%, ${IND2} 100%)`,
             boxShadow: "0 10px 36px rgba(48,48,110,0.22), 0 0 0 0.5px rgba(255,255,255,0.18)",
@@ -899,7 +944,14 @@ const DashboardPage = () => {
         </div>
 
         {/* ── Recent Alerts ── */}
-        <div className="mx-5 mt-[14px] bg-white rounded-[22px] p-5" style={{ boxShadow: SH, border: `0.5px solid ${IND_BDR}` }}>
+        <div
+          role="button"
+          tabIndex={0}
+          aria-label="Open alerts page"
+          onClick={() => navigate("/alerts")}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("/alerts"); } }}
+          className="mx-5 mt-[14px] bg-white rounded-[22px] p-5 cursor-pointer active:scale-[0.98] transition-transform focus:outline-none focus-visible:ring-2 focus-visible:ring-[#30306E]/40"
+          style={{ boxShadow: SH, border: `0.5px solid ${IND_BDR}` }}>
           <h3 className="text-[18px] font-bold mb-5" style={{ color: T1, letterSpacing: "-0.4px" }}>Recent Alerts</h3>
           {recentAlerts.length > 0 ? (
             <div className="space-y-3">
@@ -929,7 +981,14 @@ const DashboardPage = () => {
         </div>
 
         {/* ── Weekly AI Report Card ── */}
-        <div className="mx-5 mt-[14px] bg-white rounded-[22px] px-5 py-[18px]" style={{ boxShadow: SH, border: `0.5px solid ${IND_BDR}` }}>
+        <div
+          role="button"
+          tabIndex={0}
+          aria-label="Open reports page"
+          onClick={() => navigate("/reports")}
+          onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("/reports"); } }}
+          className="mx-5 mt-[14px] bg-white rounded-[22px] px-5 py-[18px] cursor-pointer active:scale-[0.98] transition-transform focus:outline-none focus-visible:ring-2 focus-visible:ring-[#30306E]/40"
+          style={{ boxShadow: SH, border: `0.5px solid ${IND_BDR}` }}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-[42px] h-[42px] rounded-[14px] flex items-center justify-center"
@@ -944,7 +1003,7 @@ const DashboardPage = () => {
               </div>
             </div>
             {weekConfig.canGenerate && !weeklyReport ? (
-              <button onClick={handleGenerateWeeklyReport} disabled={weeklyLoading || dataLoading}
+              <button onClick={(e) => { e.stopPropagation(); handleGenerateWeeklyReport(); }} disabled={weeklyLoading || dataLoading}
                 className="flex items-center gap-2 px-3 py-2 rounded-[12px] text-[12px] font-semibold text-white disabled:opacity-50"
                 style={{ background: IND, boxShadow: "0 2px 8px rgba(48,48,110,0.28)" }}>
                 {weeklyLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
@@ -1235,7 +1294,13 @@ const DashboardPage = () => {
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-5 mb-5">
 
             {/* Academic Health (lg:col-span-3) */}
-            <div className="lg:col-span-3 bg-white rounded-[28px] p-8 relative overflow-hidden"
+            <div
+              role="button"
+              tabIndex={0}
+              aria-label="Open performance page"
+              onClick={() => navigate("/performance")}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("/performance"); } }}
+              className="lg:col-span-3 bg-white rounded-[28px] p-8 relative overflow-hidden cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-[#30306E]/40"
               style={{ boxShadow: SH_LG, border: `0.5px solid ${IND_BDR}` }}>
               <div className="absolute -top-[80px] -right-[60px] w-[260px] h-[260px] rounded-full pointer-events-none"
                 style={{ background: "radial-gradient(circle, rgba(48,48,110,0.05) 0%, transparent 70%)" }} />
@@ -1289,7 +1354,13 @@ const DashboardPage = () => {
             </div>
 
             {/* Profile Card (lg:col-span-2) */}
-            <div className="lg:col-span-2 rounded-[28px] p-7 relative overflow-hidden"
+            <div
+              role="button"
+              tabIndex={0}
+              aria-label="Open my child profile"
+              onClick={() => navigate("/my-child")}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("/my-child"); } }}
+              className="lg:col-span-2 rounded-[28px] p-7 relative overflow-hidden cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-white/50"
               style={{
                 background: `linear-gradient(140deg, ${IND} 0%, ${IND2} 100%)`,
                 boxShadow: "0 10px 36px rgba(48,48,110,0.22), 0 0 0 0.5px rgba(255,255,255,0.18)",
@@ -1328,12 +1399,19 @@ const DashboardPage = () => {
           {/* ── Row 2: 4 Stat Cards ── */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
             {[
-              { icon: CheckCircle, iconColor: GREEN, bg: GREEN_S, border: "rgba(18,192,78,0.20)", glow: "rgba(18,192,78,0.14)", label: "Attendance", value: attDisplay, status: liveStats.attendance === null ? "No records yet" : attOnTrack ? "On track ✓" : "Below target", statusColor: liveStats.attendance === null ? T4 : attOnTrack ? GREEN : ORANGE },
-              { icon: AlertCircle, iconColor: ORANGE, bg: ORANGE_S, border: "rgba(245,160,0,0.20)", glow: "rgba(245,160,0,0.14)", label: "Pending Work", value: pendingDisplay, status: liveStats.pending === null ? "No assignments yet" : noPending ? "All clear ✓" : "Due this week", statusColor: liveStats.pending === null ? T4 : noPending ? GREEN : ORANGE },
-              { icon: Calendar, iconColor: IND, bg: IND_SOFT, border: IND_BDR, glow: "rgba(48,48,110,0.09)", label: "Upcoming Tests", value: testsDisplay, status: liveStats.tests === null ? "No tests scheduled" : "Next 7 days", statusColor: T4 },
-              { icon: Star, iconColor: ROSE, bg: ROSE_S, border: "rgba(255,110,168,0.20)", glow: "rgba(255,110,168,0.14)", label: "Recent Grade", value: liveStats.recentGrade !== "N/A" ? liveStats.recentGrade : "—", status: liveStats.recentSubject, statusColor: T4 },
-            ].map(({ icon: Icon, iconColor, bg, border, glow, label, value, status, statusColor }) => (
-              <div key={label} className="bg-white rounded-[22px] px-5 pt-5 pb-5 relative overflow-hidden transition-transform hover:-translate-y-0.5"
+              { icon: CheckCircle, iconColor: GREEN, bg: GREEN_S, border: "rgba(18,192,78,0.20)", glow: "rgba(18,192,78,0.14)", label: "Attendance", value: attDisplay, status: liveStats.attendance === null ? "No records yet" : attOnTrack ? "On track ✓" : "Below target", statusColor: liveStats.attendance === null ? T4 : attOnTrack ? GREEN : ORANGE, route: "/attendance" },
+              { icon: AlertCircle, iconColor: ORANGE, bg: ORANGE_S, border: "rgba(245,160,0,0.20)", glow: "rgba(245,160,0,0.14)", label: "Pending Work", value: pendingDisplay, status: liveStats.pending === null ? "No assignments yet" : noPending ? "All clear ✓" : "Due this week", statusColor: liveStats.pending === null ? T4 : noPending ? GREEN : ORANGE, route: "/assignments" },
+              { icon: Calendar, iconColor: IND, bg: IND_SOFT, border: IND_BDR, glow: "rgba(48,48,110,0.09)", label: "Upcoming Tests", value: testsDisplay, status: liveStats.tests === null ? "No tests scheduled" : "Next 7 days", statusColor: T4, route: "/tests" },
+              { icon: Star, iconColor: ROSE, bg: ROSE_S, border: "rgba(255,110,168,0.20)", glow: "rgba(255,110,168,0.14)", label: "Recent Grade", value: liveStats.recentGrade !== "N/A" ? liveStats.recentGrade : "—", status: liveStats.recentSubject, statusColor: T4, route: "/tests" },
+            ].map(({ icon: Icon, iconColor, bg, border, glow, label, value, status, statusColor, route }) => (
+              <div
+                key={label}
+                role="button"
+                tabIndex={0}
+                aria-label={`Open ${label} page`}
+                onClick={() => navigate(route)}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate(route); } }}
+                className="bg-white rounded-[22px] px-5 pt-5 pb-5 relative overflow-hidden cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-[#30306E]/40"
                 style={{ boxShadow: SH, border: `0.5px solid ${IND_BDR}` }}>
                 <div className="absolute -top-[18px] -right-[18px] w-[90px] h-[90px] rounded-full pointer-events-none"
                   style={{ background: `radial-gradient(circle, ${glow} 0%, transparent 70%)`, opacity: 0.55 }} />
@@ -1380,7 +1458,13 @@ const DashboardPage = () => {
               <>
                 <div className="relative z-10 grid grid-cols-2 lg:grid-cols-4" style={{ gap: "1px", background: "rgba(180,180,230,0.07)" }}>
                   {/* Attendance */}
-                  <div className="p-5 flex flex-col gap-3" style={{ background: DK_CELL }}>
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    aria-label="Open attendance page"
+                    onClick={() => navigate("/attendance")}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("/attendance"); } }}
+                    className="p-5 flex flex-col gap-3 cursor-pointer transition-colors hover:bg-white/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#6666C0]/60" style={{ background: DK_CELL }}>
                     <span className="text-[10px] font-bold uppercase tracking-[0.10em]" style={{ color: "rgba(180,180,230,0.36)" }}>Attendance</span>
                     <div className="flex items-center gap-3">
                       <DonutRing pct={liveStats.attendance ?? 0} color={attOnTrack ? GREEN : ORANGE} size={72} stroke={6} />
@@ -1403,7 +1487,13 @@ const DashboardPage = () => {
                   </div>
 
                   {/* Avg Score */}
-                  <div className="p-5 flex flex-col gap-3" style={{ background: DK_CELL }}>
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    aria-label="Open performance page"
+                    onClick={() => navigate("/performance")}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("/performance"); } }}
+                    className="p-5 flex flex-col gap-3 cursor-pointer transition-colors hover:bg-white/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#6666C0]/60" style={{ background: DK_CELL }}>
                     <span className="text-[10px] font-bold uppercase tracking-[0.10em]" style={{ color: "rgba(180,180,230,0.36)" }}>Avg Score</span>
                     <div className="flex items-center gap-3">
                       <DonutRing pct={liveStats.avgScore} color={liveStats.avgScore >= 80 ? GREEN : liveStats.avgScore >= 60 ? IND3 : "#FF6961"} size={72} stroke={6} />
@@ -1432,7 +1522,13 @@ const DashboardPage = () => {
                   </div>
 
                   {/* Assignments */}
-                  <div className="p-5 flex flex-col gap-3" style={{ background: DK_CELL }}>
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    aria-label="Open assignments page"
+                    onClick={() => navigate("/assignments")}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("/assignments"); } }}
+                    className="p-5 flex flex-col gap-3 cursor-pointer transition-colors hover:bg-white/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#6666C0]/60" style={{ background: DK_CELL }}>
                     <span className="text-[10px] font-bold uppercase tracking-[0.10em]" style={{ color: "rgba(180,180,230,0.36)" }}>Assignments</span>
                     <div className="text-[42px] font-bold leading-none text-white" style={{ letterSpacing: "-1.4px" }}>{pendingDisplay}</div>
                     <div className="text-[12px]" style={{ color: "rgba(255,255,255,0.32)", letterSpacing: "-0.1px" }}>
@@ -1449,7 +1545,13 @@ const DashboardPage = () => {
                   </div>
 
                   {/* Recent Test */}
-                  <div className="p-5 flex flex-col gap-3" style={{ background: DK_CELL }}>
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    aria-label="Open tests page"
+                    onClick={() => navigate("/tests")}
+                    onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("/tests"); } }}
+                    className="p-5 flex flex-col gap-3 cursor-pointer transition-colors hover:bg-white/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#6666C0]/60" style={{ background: DK_CELL }}>
                     <span className="text-[10px] font-bold uppercase tracking-[0.10em]" style={{ color: "rgba(180,180,230,0.36)" }}>Recent Test</span>
                     <div className="text-[42px] font-bold leading-none text-white" style={{ letterSpacing: "-1.4px" }}>
                       {liveStats.recentGrade !== "N/A" ? liveStats.recentGrade : "—"}
@@ -1496,7 +1598,14 @@ const DashboardPage = () => {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
 
             {/* Recent Alerts */}
-            <div className="bg-white rounded-[22px] p-6" style={{ boxShadow: SH, border: `0.5px solid ${IND_BDR}` }}>
+            <div
+              role="button"
+              tabIndex={0}
+              aria-label="Open alerts page"
+              onClick={() => navigate("/alerts")}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("/alerts"); } }}
+              className="bg-white rounded-[22px] p-6 cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-[#30306E]/40"
+              style={{ boxShadow: SH, border: `0.5px solid ${IND_BDR}` }}>
               <h3 className="text-[18px] font-bold mb-5" style={{ color: T1, letterSpacing: "-0.4px" }}>Recent Alerts</h3>
               {recentAlerts.length > 0 ? (
                 <div className="space-y-3">
@@ -1526,7 +1635,14 @@ const DashboardPage = () => {
             </div>
 
             {/* Weekly AI Report header */}
-            <div className="bg-white rounded-[22px] px-6 py-6" style={{ boxShadow: SH, border: `0.5px solid ${IND_BDR}` }}>
+            <div
+              role="button"
+              tabIndex={0}
+              aria-label="Open reports page"
+              onClick={() => navigate("/reports")}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigate("/reports"); } }}
+              className="bg-white rounded-[22px] px-6 py-6 cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-[#30306E]/40"
+              style={{ boxShadow: SH, border: `0.5px solid ${IND_BDR}` }}>
               <div className="flex items-center justify-between gap-3 mb-[14px]">
                 <div className="flex items-center gap-3">
                   <div className="w-[46px] h-[46px] rounded-[14px] flex items-center justify-center"
@@ -1541,14 +1657,14 @@ const DashboardPage = () => {
                   </div>
                 </div>
                 {weekConfig.canGenerate && !weeklyReport ? (
-                  <button onClick={handleGenerateWeeklyReport} disabled={weeklyLoading || dataLoading}
+                  <button onClick={(e) => { e.stopPropagation(); handleGenerateWeeklyReport(); }} disabled={weeklyLoading || dataLoading}
                     className="flex items-center gap-2 px-4 py-[10px] rounded-[12px] text-[12px] font-semibold text-white disabled:opacity-50 transition-transform hover:scale-[1.02]"
                     style={{ background: IND, boxShadow: "0 4px 14px rgba(48,48,110,0.28)" }}>
                     {weeklyLoading ? <Loader2 className="w-[14px] h-[14px] animate-spin" /> : <Sparkles className="w-[14px] h-[14px]" />}
                     {weeklyLoading ? "Generating..." : "Generate"}
                   </button>
                 ) : weekConfig.canGenerate && weeklyReport ? (
-                  <button onClick={() => setWeeklyReport(null)}
+                  <button onClick={(e) => { e.stopPropagation(); setWeeklyReport(null); }}
                     className="text-[11px] font-medium px-3 py-[8px] rounded-[10px]"
                     style={{ color: T3, border: `0.5px solid ${IND_BDR}`, background: "white" }}>
                     Regenerate
