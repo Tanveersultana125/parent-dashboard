@@ -7,7 +7,6 @@ import {
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/AuthContext";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { PageHeader } from "@/components/ui/PageHeader";
 import { db } from "@/lib/firebase";
 import { scopedQuery } from "@/lib/scopedQuery";
 import { subscribeEnrollments } from "@/lib/enrollmentQuery";
@@ -252,7 +251,14 @@ const AlertsPage = () => {
     });
 
     // ── SOURCE 3: test_scores / gradebook_scores ──
-    const submittedIds = new Set(submissions.map(s => s.assignmentId));
+    // IMPORTANT: AssignmentsPage writes the submission as `homeworkId` (the
+    // assignment doc id), not `assignmentId`. Earlier we only checked
+    // `assignmentId`, so any already-submitted homework still fired an
+    // "Overdue" alert — a straight-up false positive to the parent. Check
+    // both field names to cover current writes and legacy records.
+    const submittedIds = new Set(
+      submissions.flatMap(s => [s.homeworkId, s.assignmentId].filter(Boolean)),
+    );
     scores.forEach(s => {
       const pct = s.percentage ?? (s.maxScore > 0 ? (s.score / s.maxScore * 100) : 0);
       const sub = s.subject || "a subject";
@@ -475,43 +481,6 @@ const AlertsPage = () => {
   const getTabCount = (tab: string) =>
     tab === "All" ? allAlerts.length : allAlerts.filter(a => a.category === tab).length;
 
-  // ── Styling helpers ──
-  const getBorderColor = (p: ParsedAlert["priority"]) => ({
-    "High Priority": "border-l-rose-500",
-    "Medium Priority": "border-l-amber-400",
-    "Good News": "border-l-emerald-500",
-    General: "border-l-blue-400"
-  }[p] || "border-l-slate-300");
-
-  const getIconStyle = (alert: ParsedAlert) => {
-    if (alert.priority === "Good News")
-      return { bg: "bg-emerald-100", color: "text-emerald-600", icon: <Trophy className="w-5 h-5" /> };
-    if (alert.category === "Attendance" && alert.priority === "High Priority")
-      return { bg: "bg-rose-100", color: "text-rose-500", icon: <AlertCircle className="w-5 h-5" /> };
-    if (alert.category === "Attendance")
-      return { bg: "bg-amber-100", color: "text-amber-500", icon: <Clock className="w-5 h-5" /> };
-    if (alert.category === "Academic" && alert.priority === "High Priority")
-      return { bg: "bg-rose-100", color: "text-rose-500", icon: <BookOpen className="w-5 h-5" /> };
-    if (alert.category === "Academic")
-      return { bg: "bg-blue-100", color: "text-blue-500", icon: <BookOpen className="w-5 h-5" /> };
-    if (alert.source === "risks")
-      return { bg: "bg-rose-100", color: "text-rose-500", icon: <ShieldAlert className="w-5 h-5" /> };
-    return { bg: "bg-slate-100", color: "text-slate-500", icon: <Calendar className="w-5 h-5" /> };
-  };
-
-  const getPriorityBadge = (p: ParsedAlert["priority"]) => ({
-    "High Priority": "bg-rose-100 text-rose-600",
-    "Medium Priority": "bg-amber-100 text-amber-600",
-    "Good News": "bg-emerald-100 text-emerald-600",
-    General: "bg-slate-100 text-slate-500"
-  }[p] || "bg-slate-100 text-slate-500");
-
-  const getCategoryBadge = (c: ParsedAlert["category"]) => ({
-    Academic: "bg-blue-50 text-blue-600",
-    Attendance: "bg-emerald-50 text-emerald-600",
-    General: "bg-slate-100 text-slate-500"
-  }[c] || "bg-slate-100 text-slate-500");
-
   // ═══════════════════════════════════════════════════════════════
   // MOBILE — Blue Premium UI
   // ═══════════════════════════════════════════════════════════════
@@ -693,8 +662,16 @@ const AlertsPage = () => {
               ? "0 5px 16px rgba(0,200,83,0.30)"
               : SH_BTN;
 
+            const runPrimary = () => { if (primary) primary.onClick(); };
             return (
-              <div key={alert.id} className="mx-5 mt-[14px] rounded-[24px] relative overflow-hidden active:scale-[0.98] transition-transform"
+              <div
+                key={alert.id}
+                role="button"
+                tabIndex={0}
+                aria-label={`${alert.title} — ${primary?.label || "view"}`}
+                onClick={runPrimary}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); runPrimary(); } }}
+                className="mx-5 mt-[14px] rounded-[24px] relative overflow-hidden cursor-pointer active:scale-[0.98] transition-transform focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0055FF]/40"
                 style={{ background: CARD, boxShadow: SH_LG, border: "0.5px solid rgba(0,85,255,0.10)" }}>
                 {/* Left accent stripe */}
                 <div className="absolute left-0 top-0 bottom-0 w-1 rounded-l-[2px]" style={{ background: theme.stripe }} />
@@ -757,7 +734,7 @@ const AlertsPage = () => {
                   {/* Action buttons */}
                   <div className="flex gap-2">
                     {primary && (
-                      <button onClick={primary.onClick}
+                      <button onClick={(e) => { e.stopPropagation(); primary.onClick(); }}
                         className="flex-1 h-[42px] rounded-[13px] flex items-center justify-center gap-[6px] text-[12px] font-bold text-white active:scale-[0.95] transition-transform relative overflow-hidden"
                         style={{ background: primaryGrad, boxShadow: primaryShadow, letterSpacing: "0.02em" }}>
                         <div className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(135deg, rgba(255,255,255,0.14) 0%, transparent 52%)" }} />
@@ -765,7 +742,7 @@ const AlertsPage = () => {
                       </button>
                     )}
                     {secondary && (
-                      <button onClick={secondary.onClick}
+                      <button onClick={(e) => { e.stopPropagation(); secondary.onClick(); }}
                         className="flex-1 h-[42px] rounded-[13px] flex items-center justify-center gap-[6px] text-[12px] font-bold active:scale-[0.95] transition-transform"
                         style={{ background: BG, border: "0.5px solid rgba(0,85,255,0.16)", color: T2, boxShadow: SH, letterSpacing: "0.02em" }}>
                         <span className="px-1 text-center truncate">{secondary.label}</span>
@@ -780,7 +757,7 @@ const AlertsPage = () => {
 
         {/* Summary dark card */}
         {allAlerts.length > 0 && (
-          <div className="mx-5 mt-[14px] rounded-[24px] px-[22px] py-5 relative overflow-hidden"
+          <div className="mx-5 mt-[14px] rounded-[24px] px-[22px] py-5 relative overflow-hidden transition-transform active:scale-[0.98]"
             style={{
               background: "linear-gradient(140deg, #001888 0%, #0033CC 48%, #0055FF 100%)",
               boxShadow: "0 8px 28px rgba(0,51,204,0.30), 0 0 0 0.5px rgba(255,255,255,0.14)",

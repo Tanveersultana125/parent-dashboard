@@ -236,9 +236,13 @@ const ReportsPage = () => {
             const theme = formatTheme(type);
             return (
               <div key={r.id}
-                className="mx-5 mt-[14px] bg-white rounded-[26px] px-5 pt-[22px] pb-5 relative overflow-hidden cursor-pointer active:scale-[0.98] transition-transform"
+                role="button"
+                tabIndex={0}
+                aria-label={`Download ${r.title || "report"}`}
+                className="mx-5 mt-[14px] bg-white rounded-[26px] px-5 pt-[22px] pb-5 relative overflow-hidden cursor-pointer active:scale-[0.98] transition-transform focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0055FF]/40"
                 style={{ boxShadow: SH_LG, border: "0.5px solid rgba(0,85,255,0.10)", transitionTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)" }}
-                onClick={() => handleDownload(r)}>
+                onClick={() => handleDownload(r)}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleDownload(r); } }}>
                 <div className="absolute -top-[38px] -right-[25px] w-[150px] h-[150px] rounded-full pointer-events-none"
                   style={{ background: "radial-gradient(circle, rgba(0,85,255,0.05) 0%, transparent 70%)" }} />
                 <div className="absolute bottom-3 right-4 opacity-[0.04] pointer-events-none">
@@ -318,7 +322,7 @@ const ReportsPage = () => {
 
         {/* ── Policy Card ── */}
         {!loading && (
-          <div className="mx-5 mt-[14px] rounded-[26px] px-6 py-[26px] relative overflow-hidden"
+          <div className="mx-5 mt-[14px] rounded-[26px] px-6 py-[26px] relative overflow-hidden transition-transform active:scale-[0.98]"
             style={{
               background: "linear-gradient(140deg, #0033CC 0%, #0055FF 45%, #2277FF 80%, #55AAFF 100%)",
               boxShadow: `${SH_BTN}, 0 0 0 0.5px rgba(255,255,255,0.14)`,
@@ -411,26 +415,30 @@ const ReportsPage = () => {
     } catch { return "Recent"; }
   };
 
-  // 3D tilt handlers — track mouse inside card
-  const handle3DEnter = (e: React.MouseEvent<HTMLDivElement>) => {
+  // 3D tilt handlers — track mouse inside card.
+  // Type the element union so these can attach to either <div> or <button>
+  // (both used on this page). The previous HTMLDivElement-only type caused
+  // three TS2322 errors where the stat cards (buttons) wired in the handlers.
+  type TiltEl = HTMLDivElement | HTMLButtonElement;
+  const handle3DEnter = (e: React.MouseEvent<TiltEl>) => {
     const el = e.currentTarget;
     el.style.transition = "transform 0.06s cubic-bezier(0.2,0.8,0.2,1), box-shadow 0.2s ease";
   };
-  const handle3DMove = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handle3DMove = (e: React.MouseEvent<TiltEl>) => {
     const el = e.currentTarget;
     const rect = el.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
     const rotX = (((y / rect.height) - 0.5) * -8).toFixed(2);
     const rotY = (((x / rect.width) - 0.5) * 8).toFixed(2);
-    el.style.transform = `perspective(1100px) rotateX(${rotX}deg) rotateY(${rotY}deg) translateY(-4px) scale(1.008)`;
+    el.style.transform = `perspective(1100px) rotateX(${rotX}deg) rotateY(${rotY}deg) translateY(-5px) scale(1.012)`;
     const glow = el.querySelector<HTMLDivElement>('[data-glow]');
     if (glow) {
       glow.style.opacity = "1";
-      glow.style.background = `radial-gradient(420px circle at ${x}px ${y}px, rgba(0,85,255,0.13), transparent 45%)`;
+      glow.style.background = `radial-gradient(420px circle at ${x}px ${y}px, rgba(0,85,255,0.15), transparent 45%)`;
     }
   };
-  const handle3DLeave = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handle3DLeave = (e: React.MouseEvent<TiltEl>) => {
     const el = e.currentTarget;
     el.style.transition = "transform 0.5s cubic-bezier(0.2,0.8,0.2,1), box-shadow 0.3s ease";
     el.style.transform = "perspective(1100px) rotateX(0deg) rotateY(0deg) translateY(0) scale(1)";

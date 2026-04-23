@@ -326,8 +326,12 @@ const SyllabusPage = () => {
             return (
               <div
                 key={doc.id}
+                role="button"
+                tabIndex={0}
+                aria-label={`Open ${doc.title || "document"}`}
                 onClick={() => handleView(doc.fileUrl)}
-                className="mx-5 mt-[14px] bg-white rounded-[24px] p-5 relative overflow-hidden cursor-pointer active:scale-[0.98] transition-transform"
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleView(doc.fileUrl); } }}
+                className="mx-5 mt-[14px] bg-white rounded-[24px] p-5 relative overflow-hidden cursor-pointer active:scale-[0.97] transition-transform focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0055FF]/40"
                 style={{ boxShadow: SH_LG, border: "0.5px solid rgba(0,85,255,0.10)", transitionTimingFunction: "cubic-bezier(0.34,1.56,0.64,1)" }}>
                 <div className="absolute -top-10 -right-7 w-[140px] h-[140px] rounded-full pointer-events-none"
                   style={{ background: "radial-gradient(circle, rgba(0,85,255,0.05) 0%, transparent 70%)" }} />
@@ -662,8 +666,12 @@ const SyllabusPage = () => {
               return (
                 <div
                   key={doc.id}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Open ${doc.title || "document"}`}
                   onClick={() => handleView(doc.fileUrl)}
-                  className="bg-white rounded-[24px] p-6 relative overflow-hidden cursor-pointer transition-transform hover:-translate-y-0.5"
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleView(doc.fileUrl); } }}
+                  className="bg-white rounded-[24px] p-6 relative overflow-hidden cursor-pointer transition-all duration-200 hover:-translate-y-1.5 hover:shadow-2xl hover:scale-[1.015] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#0055FF]/40"
                   style={{ boxShadow: SH_LG, border: "0.5px solid rgba(0,85,255,0.10)" }}>
                   <div className="absolute -top-10 -right-7 w-[160px] h-[160px] rounded-full pointer-events-none"
                     style={{ background: "radial-gradient(circle, rgba(0,85,255,0.05) 0%, transparent 70%)" }} />
@@ -766,7 +774,7 @@ const SyllabusPage = () => {
 
         {/* ── Summary Dark Card ── */}
         {!loading && docs.length > 0 && (
-          <div className="mt-5 rounded-[24px] px-7 py-6 relative overflow-hidden"
+          <div className="mt-5 rounded-[24px] px-7 py-6 relative overflow-hidden transition-all duration-200 hover:-translate-y-1 hover:shadow-2xl"
             style={{
               background: "linear-gradient(140deg, #001888 0%, #0033CC 48%, #0055FF 100%)",
               boxShadow: "0 8px 28px rgba(0,51,204,0.32), 0 0 0 0.5px rgba(255,255,255,0.14)",
