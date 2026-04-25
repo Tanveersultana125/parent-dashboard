@@ -44,14 +44,12 @@ const Card = ({ children, title, action, style }: { children: React.ReactNode; t
       onMouseLeave={handleLeave}
       style={{
         background: T.white,
-        border: `1px solid ${hovered ? "rgba(59,91,219,0.25)" : T.bdr}`,
+        border: `1px solid ${hovered ? "rgba(59,91,219,0.25)" : "rgba(59,91,219,0.12)"}`,
         borderRadius: 16,
         overflow: "hidden",
         transform: `perspective(800px) rotateX(${tilt.x}deg) rotateY(${tilt.y}deg) ${hovered ? "translateY(-4px) scale(1.01)" : "translateY(0) scale(1)"}`,
         transition: "transform 0.2s ease, border-color 0.3s ease, box-shadow 0.3s ease",
-        boxShadow: hovered
-          ? "0 20px 40px rgba(59,91,219,0.1), 0 8px 16px rgba(0,0,0,0.06), 0 0 0 1px rgba(59,91,219,0.08)"
-          : "0 1px 3px rgba(0,0,0,0.04), 0 0 0 1px rgba(0,0,0,0.02)",
+        boxShadow: "0 20px 40px rgba(59,91,219,0.1), 0 8px 16px rgba(0,0,0,0.06), 0 0 0 1px rgba(59,91,219,0.08)",
         willChange: "transform",
         position: "relative",
         ...style,
