@@ -318,6 +318,186 @@ img, video {
   }
 }
 
+/* ═════════════════════════════════════════════════════════════════════
+   APPLE 8PX GRID — spacing, padding, margins, gap, alignment
+   Allowed values: 4, 8, 12, 16, 20, 24, 32, 40 (px)
+   Off-grid Tailwind utilities are clamped to the nearest allowed value.
+   No layout, color, or component change — only rhythm normalization.
+   ═════════════════════════════════════════════════════════════════════ */
+@layer utilities {
+  /* ─── PADDING ─────────────────────────────────────────────────────── */
+  .p-7    { padding: 24px; }
+  .p-9    { padding: 32px; }
+  .p-11   { padding: 40px; }
+  .p-12, .p-14, .p-16, .p-20, .p-24, .p-28, .p-32 { padding: 40px; }
+
+  .px-7   { padding-left: 24px; padding-right: 24px; }
+  .px-9   { padding-left: 32px; padding-right: 32px; }
+  .px-11  { padding-left: 40px; padding-right: 40px; }
+  .px-12, .px-14, .px-16, .px-20, .px-24, .px-28, .px-32 {
+    padding-left: 40px; padding-right: 40px;
+  }
+
+  .py-7   { padding-top: 24px; padding-bottom: 24px; }
+  .py-9   { padding-top: 32px; padding-bottom: 32px; }
+  .py-11  { padding-top: 40px; padding-bottom: 40px; }
+  .py-12, .py-14, .py-16, .py-20, .py-24, .py-28, .py-32 {
+    padding-top: 40px; padding-bottom: 40px;
+  }
+
+  .pt-7   { padding-top: 24px; }
+  .pt-9   { padding-top: 32px; }
+  .pt-11  { padding-top: 40px; }
+  .pt-12, .pt-14, .pt-16, .pt-20, .pt-24, .pt-28, .pt-32 { padding-top: 40px; }
+
+  .pb-7   { padding-bottom: 24px; }
+  .pb-9   { padding-bottom: 32px; }
+  .pb-11  { padding-bottom: 40px; }
+  .pb-12, .pb-14, .pb-16, .pb-20, .pb-24, .pb-28, .pb-32 { padding-bottom: 40px; }
+
+  .pl-7   { padding-left: 24px; }
+  .pl-9   { padding-left: 32px; }
+  .pl-11  { padding-left: 40px; }
+  .pl-12, .pl-14, .pl-16, .pl-20, .pl-24, .pl-28, .pl-32 { padding-left: 40px; }
+
+  .pr-7   { padding-right: 24px; }
+  .pr-9   { padding-right: 32px; }
+  .pr-11  { padding-right: 40px; }
+  .pr-12, .pr-14, .pr-16, .pr-20, .pr-24, .pr-28, .pr-32 { padding-right: 40px; }
+
+  /* ─── MARGIN ──────────────────────────────────────────────────────── */
+  .m-7    { margin: 24px; }
+  .m-9    { margin: 32px; }
+  .m-11   { margin: 40px; }
+  .m-12, .m-14, .m-16, .m-20, .m-24, .m-28, .m-32 { margin: 40px; }
+
+  .mx-7   { margin-left: 24px; margin-right: 24px; }
+  .mx-9   { margin-left: 32px; margin-right: 32px; }
+  .mx-11  { margin-left: 40px; margin-right: 40px; }
+  .mx-12, .mx-14, .mx-16, .mx-20, .mx-24, .mx-28, .mx-32 {
+    margin-left: 40px; margin-right: 40px;
+  }
+
+  .my-7   { margin-top: 24px; margin-bottom: 24px; }
+  .my-9   { margin-top: 32px; margin-bottom: 32px; }
+  .my-11  { margin-top: 40px; margin-bottom: 40px; }
+  .my-12, .my-14, .my-16, .my-20, .my-24, .my-28, .my-32 {
+    margin-top: 40px; margin-bottom: 40px;
+  }
+
+  .mt-7   { margin-top: 24px; }
+  .mt-9   { margin-top: 32px; }
+  .mt-11  { margin-top: 40px; }
+  .mt-12, .mt-14, .mt-16, .mt-20, .mt-24, .mt-28, .mt-32 { margin-top: 40px; }
+
+  .mb-7   { margin-bottom: 24px; }
+  .mb-9   { margin-bottom: 32px; }
+  .mb-11  { margin-bottom: 40px; }
+  .mb-12, .mb-14, .mb-16, .mb-20, .mb-24, .mb-28, .mb-32 { margin-bottom: 40px; }
+
+  .ml-7   { margin-left: 24px; }
+  .ml-9   { margin-left: 32px; }
+  .ml-11  { margin-left: 40px; }
+  .ml-12, .ml-14, .ml-16, .ml-20, .ml-24, .ml-28, .ml-32 { margin-left: 40px; }
+
+  .mr-7   { margin-right: 24px; }
+  .mr-9   { margin-right: 32px; }
+  .mr-11  { margin-right: 40px; }
+  .mr-12, .mr-14, .mr-16, .mr-20, .mr-24, .mr-28, .mr-32 { margin-right: 40px; }
+
+  /* ─── GAP (flex / grid) ───────────────────────────────────────────── */
+  .gap-7  { gap: 24px; }
+  .gap-9  { gap: 32px; }
+  .gap-11 { gap: 40px; }
+  .gap-12, .gap-14, .gap-16, .gap-20, .gap-24, .gap-28, .gap-32 { gap: 40px; }
+
+  .gap-x-7  { column-gap: 24px; }
+  .gap-x-9  { column-gap: 32px; }
+  .gap-x-11 { column-gap: 40px; }
+  .gap-x-12, .gap-x-14, .gap-x-16, .gap-x-20, .gap-x-24, .gap-x-28, .gap-x-32 {
+    column-gap: 40px;
+  }
+
+  .gap-y-7  { row-gap: 24px; }
+  .gap-y-9  { row-gap: 32px; }
+  .gap-y-11 { row-gap: 40px; }
+  .gap-y-12, .gap-y-14, .gap-y-16, .gap-y-20, .gap-y-24, .gap-y-28, .gap-y-32 {
+    row-gap: 40px;
+  }
+
+  /* ─── space-x / space-y (sibling spacing) ─────────────────────────── */
+  .space-y-7  > :not([hidden]) ~ :not([hidden]) { margin-top: 24px; }
+  .space-y-9  > :not([hidden]) ~ :not([hidden]) { margin-top: 32px; }
+  .space-y-11 > :not([hidden]) ~ :not([hidden]) { margin-top: 40px; }
+  .space-y-12 > :not([hidden]) ~ :not([hidden]),
+  .space-y-14 > :not([hidden]) ~ :not([hidden]),
+  .space-y-16 > :not([hidden]) ~ :not([hidden]),
+  .space-y-20 > :not([hidden]) ~ :not([hidden]),
+  .space-y-24 > :not([hidden]) ~ :not([hidden]),
+  .space-y-28 > :not([hidden]) ~ :not([hidden]),
+  .space-y-32 > :not([hidden]) ~ :not([hidden]) { margin-top: 40px; }
+
+  .space-x-7  > :not([hidden]) ~ :not([hidden]) { margin-left: 24px; }
+  .space-x-9  > :not([hidden]) ~ :not([hidden]) { margin-left: 32px; }
+  .space-x-11 > :not([hidden]) ~ :not([hidden]) { margin-left: 40px; }
+  .space-x-12 > :not([hidden]) ~ :not([hidden]),
+  .space-x-14 > :not([hidden]) ~ :not([hidden]),
+  .space-x-16 > :not([hidden]) ~ :not([hidden]),
+  .space-x-20 > :not([hidden]) ~ :not([hidden]),
+  .space-x-24 > :not([hidden]) ~ :not([hidden]),
+  .space-x-28 > :not([hidden]) ~ :not([hidden]),
+  .space-x-32 > :not([hidden]) ~ :not([hidden]) { margin-left: 40px; }
+}
+
+/* ─── Card padding & section rhythm ──────────────────────────────────
+   Apply Apple-grade default padding to common card containers and
+   normalize line-height for body text so reading rhythm is balanced.
+   ──────────────────────────────────────────────────────────────────── */
+@layer base {
+  /* Body & flowing text — readability target 1.5 */
+  p, li, dd, dt, td, th {
+    line-height: 1.5;
+  }
+
+  /* Inner spacing between consecutive paragraphs / list items */
+  p + p,
+  ul + p,
+  p + ul,
+  ol + p,
+  p + ol {
+    margin-top: 12px;
+  }
+
+  /* Section breathing space — main is the page wrapper */
+  main > * + * {
+    margin-top: 24px;
+  }
+
+  /* Headings keep tight leading, but never crowd surrounding content */
+  h1, h2, h3, h4, h5, h6 {
+    line-height: 1.25;
+  }
+
+  /* Form control rhythm — labels and inputs sit cleanly on grid */
+  label + input,
+  label + select,
+  label + textarea {
+    margin-top: 8px;
+  }
+}
+
+/* ─── Grid alignment guarantees ──────────────────────────────────────
+   Cards in the same grid row align top-to-bottom and stretch evenly.
+   ──────────────────────────────────────────────────────────────────── */
+@layer utilities {
+  .grid {
+    align-items: stretch;
+  }
+  .grid > * {
+    min-width: 0;
+  }
+}
+
 /* Scrollbar styling */
 ::-webkit-scrollbar {
   width: 6px;
