@@ -89,60 +89,82 @@ img, video {
 
 @layer base {
   :root {
-    --background: 220 20% 97%;
-    --foreground: 220 30% 15%;
+    /* Surfaces — calm, off-white ground (Apple "system gray 6" feel) */
+    --background: 220 14% 97%;
+    --foreground: 220 18% 14%;
 
     --card: 0 0% 100%;
-    --card-foreground: 220 30% 15%;
+    --card-foreground: 220 18% 14%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 220 30% 15%;
+    --popover-foreground: 220 18% 14%;
 
-    --primary: 220 60% 25%;
+    /* Single primary accent — refined navy, used for active + key emphasis only */
+    --primary: 218 45% 22%;
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 220 30% 15%;
+    --secondary: 220 14% 95%;
+    --secondary-foreground: 220 18% 14%;
 
-    --muted: 220 15% 92%;
-    --muted-foreground: 220 10% 50%;
+    --muted: 220 13% 94%;
+    --muted-foreground: 220 8% 45%;
 
-    --accent: 220 60% 25%;
+    --accent: 218 45% 22%;
     --accent-foreground: 0 0% 100%;
 
-    --destructive: 0 72% 51%;
+    /* Subtle, non-neon destructive */
+    --destructive: 4 62% 50%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 220 15% 90%;
-    --input: 220 15% 90%;
-    --ring: 220 60% 25%;
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 218 45% 22%;
 
     --radius: 0.75rem;
 
-    /* Edullent custom tokens */
-    --edu-navy: 220 60% 25%;
-    --edu-navy-light: 220 50% 35%;
-    --edu-green: 142 70% 45%;
-    --edu-green-light: 142 60% 95%;
-    --edu-orange: 30 90% 55%;
-    --edu-orange-light: 35 90% 95%;
-    --edu-red: 0 72% 51%;
-    --edu-red-light: 0 80% 95%;
-    --edu-blue: 215 80% 55%;
-    --edu-blue-light: 215 80% 95%;
-    --edu-yellow: 45 90% 55%;
-    --edu-yellow-light: 45 90% 95%;
-    --edu-purple: 270 60% 55%;
-    --edu-purple-light: 270 60% 95%;
+    /* Edullent semantic tokens — desaturated, premium, status-only usage.
+       The vivid hex of yesterday becomes a quieter, intentional palette. */
+    --edu-navy: 218 45% 22%;
+    --edu-navy-light: 218 35% 36%;
 
-    --sidebar-background: 220 60% 25%;
-    --sidebar-foreground: 220 20% 80%;
+    --edu-green: 145 38% 42%;
+    --edu-green-light: 145 30% 96%;
+
+    --edu-orange: 28 65% 52%;
+    --edu-orange-light: 28 50% 96%;
+
+    --edu-red: 4 62% 50%;
+    --edu-red-light: 4 55% 96%;
+
+    --edu-blue: 215 55% 48%;
+    --edu-blue-light: 215 45% 96%;
+
+    --edu-yellow: 40 70% 52%;
+    --edu-yellow-light: 40 55% 96%;
+
+    --edu-purple: 258 35% 52%;
+    --edu-purple-light: 258 35% 96%;
+
+    /* Sidebar — premium charcoal-navy, reduced saturation for calm depth */
+    --sidebar-background: 220 24% 14%;
+    --sidebar-foreground: 220 14% 78%;
     --sidebar-primary: 0 0% 100%;
-    --sidebar-primary-foreground: 220 60% 25%;
-    --sidebar-accent: 220 55% 32%;
+    --sidebar-primary-foreground: 220 24% 14%;
+    --sidebar-accent: 220 20% 20%;
     --sidebar-accent-foreground: 0 0% 100%;
-    --sidebar-border: 220 50% 30%;
-    --sidebar-ring: 220 60% 45%;
+    --sidebar-border: 220 18% 22%;
+    --sidebar-ring: 220 30% 50%;
+
+    /* Apple-grade elevation — soft, neutral, multi-stop shadows */
+    --shadow-xs: 0 1px 2px 0 hsl(220 18% 14% / 0.04);
+    --shadow-sm: 0 1px 2px 0 hsl(220 18% 14% / 0.05),
+                 0 1px 3px 0 hsl(220 18% 14% / 0.04);
+    --shadow-md: 0 2px 4px -1px hsl(220 18% 14% / 0.05),
+                 0 4px 8px -2px hsl(220 18% 14% / 0.05);
+    --shadow-lg: 0 4px 12px -2px hsl(220 18% 14% / 0.06),
+                 0 8px 24px -4px hsl(220 18% 14% / 0.06);
+    --shadow-xl: 0 8px 24px -4px hsl(220 18% 14% / 0.08),
+                 0 16px 40px -8px hsl(220 18% 14% / 0.08);
   }
 }
 
@@ -496,6 +518,74 @@ img, video {
   .grid > * {
     min-width: 0;
   }
+}
+
+/* ═════════════════════════════════════════════════════════════════════
+   APPLE COLOR REFINEMENT
+   • Neutralize bright Tailwind shadows to soft, single-tone elevation
+   • Tone down loud gradient utilities that decorate without meaning
+   • Apply quiet borders and clean card surfaces throughout the app
+   ═════════════════════════════════════════════════════════════════════ */
+@layer utilities {
+  /* Refined elevation — replaces Tailwind's harsh black drop shadows */
+  .shadow-xs   { box-shadow: var(--shadow-xs); }
+  .shadow-sm   { box-shadow: var(--shadow-sm); }
+  .shadow,
+  .shadow-md   { box-shadow: var(--shadow-md); }
+  .shadow-lg   { box-shadow: var(--shadow-lg); }
+  .shadow-xl,
+  .shadow-2xl  { box-shadow: var(--shadow-xl); }
+
+  /* Decorative gradient utilities → flatten to neutral surfaces.
+     Color "decorates" only when meaningful; Tailwind from-/to- become no-ops. */
+  .bg-gradient-to-r,
+  .bg-gradient-to-l,
+  .bg-gradient-to-t,
+  .bg-gradient-to-b,
+  .bg-gradient-to-tr,
+  .bg-gradient-to-tl,
+  .bg-gradient-to-br,
+  .bg-gradient-to-bl {
+    background-image: none;
+  }
+}
+
+@layer base {
+  /* Cards — clean white surface with whisper-soft border + elevation */
+  [class*="rounded-"][class*="bg-white"],
+  .glass-card {
+    border-color: hsl(var(--border));
+    box-shadow: var(--shadow-sm);
+  }
+
+  /* Quiet focus ring — refined navy, not vivid blue */
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring) / 0.55);
+    outline-offset: 2px;
+  }
+
+  /* Selection — subtle accent tint */
+  ::selection {
+    background: hsl(var(--primary) / 0.18);
+    color: hsl(var(--foreground));
+  }
+}
+
+/* Refined glass-card override — replaces frosted look with calm white */
+.glass-card {
+  background: hsl(0 0% 100% / 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid hsl(var(--border));
+  box-shadow: var(--shadow-sm);
+}
+
+/* Scrollbar — match the new neutral palette */
+::-webkit-scrollbar-thumb {
+  background: hsl(220 10% 70% / 0.45);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(220 10% 55% / 0.55);
 }
 
 /* Scrollbar styling */
