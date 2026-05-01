@@ -6,6 +6,7 @@ import { db, storage } from "@/lib/firebase";
 import { collection, where, onSnapshot, addDoc, serverTimestamp, Unsubscribe } from "firebase/firestore";
 import { scopedQuery } from "@/lib/scopedQuery";
 import { subscribeEnrollments } from "@/lib/enrollmentQuery";
+import { subscribePerStudent } from "@/lib/perStudentQuery";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { toast } from "sonner";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
@@ -77,16 +78,18 @@ const AssignmentsPage = () => {
       setupAssignmentListener(classIds);
     });
 
-    // Submissions — scoped query
-    const subQ = scopedQuery("submissions", schoolId, where("studentId", "==", studentData.id));
-    const unsubSub = onSnapshot(subQ, (snapshot) => {
-      setSubmissions(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
-    }, (err) => {
-      console.error("[Assignments] submissions listener error:", err);
-      setSubmissions([]);
+    // Submissions — dual-query (studentId + studentEmail) via shared helper
+    const unsubSub = subscribePerStudent({
+      collection: "submissions",
+      student: studentData,
+      onChange: (docs) => setSubmissions(docs.map(d => ({ id: d.id, ...d.data() }))),
+      onError: (err) => {
+        console.error("[Assignments] submissions listener error:", err);
+        setSubmissions([]);
+      },
     });
     return () => { unsubEnroll(); if (unsubAssignments) unsubAssignments(); unsubSub(); };
-  }, [studentData?.id, studentData?.schoolId]);
+  }, [studentData?.id, studentData?.schoolId, studentData?.email]);
 
   // ── Feature 12: Instant Submission Feedback ──────────────────────────────
   const generateInstantFeedback = async (task: any) => {

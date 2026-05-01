@@ -9,6 +9,7 @@ import { useSchoolSettings, resolveAcademicYear } from "@/hooks/useSchoolSetting
 import { where, onSnapshot, limit } from "firebase/firestore";
 import { scopedQuery } from "@/lib/scopedQuery";
 import { subscribeEnrollments } from "@/lib/enrollmentQuery";
+import { subscribePerStudent } from "@/lib/perStudentQuery";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 const TestsPage = () => {
@@ -83,14 +84,16 @@ const TestsPage = () => {
       processEnrollments();
     });
 
-    // test_scores — single scoped query
-    const scoresQ = scopedQuery("test_scores", schoolId, where("studentId", "==", studentData.id), limit(20));
-
-    const unsubScores = onSnapshot(scoresQ, (snap) => {
-      if (!mountedRef.current) return;
-      const scores = snap.docs
-        .map(d => ({ id: d.id, ...d.data() }))
-        .sort((a: any, b: any) => {
+    // test_scores — dual-query (studentId + studentEmail) via shared helper
+    const unsubScores = subscribePerStudent({
+      collection: "test_scores",
+      student: studentData,
+      filters: [limit(20)],
+      onChange: (docs) => {
+        if (!mountedRef.current) return;
+        const scores = docs
+          .map(d => ({ id: d.id, ...d.data() }))
+          .sort((a: any, b: any) => {
           const tA = a.timestamp?.toMillis?.() || new Date(a.timestamp || 0).getTime();
           const tB = b.timestamp?.toMillis?.() || new Date(b.timestamp || 0).getTime();
           return tB - tA;
@@ -105,12 +108,13 @@ const TestsPage = () => {
         else if (pct >= (gradeScale?.C ?? 50)) c++;
         else d++;
       });
-      setStats({ aGrade: a, bGrade: b, cGrade: c, belowC: d, totalTaken: scores.length });
-      setLoading(false);
+        setStats({ aGrade: a, bGrade: b, cGrade: c, belowC: d, totalTaken: scores.length });
+        setLoading(false);
+      },
     });
 
     return () => { unsubEnroll(); unsubScores(); cleanupTests(); };
-  }, [studentData?.id, studentData?.schoolId]);
+  }, [studentData?.id, studentData?.schoolId, studentData?.email]);
 
   const getDayDiff = (dateStr: string) => {
     if (!dateStr) return 0;

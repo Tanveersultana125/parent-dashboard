@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { Loader2, Send, CheckCheck, School, Mail, MessageSquare, Smile, Shield, ChevronLeft } from "lucide-react";
 import { db } from "../lib/firebase";
 import { scopedQuery } from "../lib/scopedQuery";
+import { subscribePerStudent } from "../lib/perStudentQuery";
 import { collection, where, onSnapshot, addDoc, serverTimestamp, updateDoc, doc } from "firebase/firestore";
 import { useAuth } from "../lib/AuthContext";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -20,25 +21,26 @@ const PrincipalNotesPage = () => {
   useEffect(() => {
     if (!studentData?.id) return;
     setLoading(true);
-    const schoolId = studentData.schoolId;
-    const notesQ = scopedQuery("principal_to_parent_notes", schoolId, where("studentId", "==", studentData.id));
-    const unsub = onSnapshot(notesQ,
-      async snap => {
-        const data = snap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
+    // Dual-query (studentId + studentEmail) — see lib/perStudentQuery.ts
+    const unsub = subscribePerStudent({
+      collection: "principal_to_parent_notes",
+      student: studentData,
+      onChange: async (docs) => {
+        const data = docs.map(d => ({ id: d.id, ...d.data() })) as any[];
         data.sort((a, b) => (a.timestamp?.toMillis?.() || 0) - (b.timestamp?.toMillis?.() || 0));
         setAllMessages(data);
         setLoading(false);
         // mark unread principal messages as read
-        for (const d of snap.docs) {
+        for (const d of docs) {
           const dd = d.data();
           if (dd.read === false && dd.from === "principal") {
             try { await updateDoc(doc(db, "principal_to_parent_notes", d.id), { read: true }); } catch { /* silent */ }
           }
         }
-      }
-    );
+      },
+    });
     return () => unsub();
-  }, [studentData?.id]);
+  }, [studentData?.id, studentData?.schoolId, studentData?.email]);
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: "smooth" }); }, [allMessages]);
 

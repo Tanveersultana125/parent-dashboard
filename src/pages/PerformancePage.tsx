@@ -11,6 +11,11 @@ import { useAuth } from "@/lib/AuthContext";
 import { db } from "@/lib/firebase";
 import { collection, query, where, onSnapshot, getDocs } from "firebase/firestore";
 import { useIsMobile } from "@/hooks/use-mobile";
+import {
+  generatePerformanceNarrative,
+  getGoalInsight,
+  getBenchmarkTier,
+} from "@/ai/system/performance-insights";
 
 const getSubIcon = (name: string) => {
   const n = name.toLowerCase();
@@ -249,45 +254,11 @@ const PerformancePage = () => {
     return () => { u1(); u2r(); u3r(); u4r(); u5(); };
   }, [studentData?.id]);
 
-  // ── AI helpers ──────────────────────────────────────────────────────────────
+  // ── System-driven insight helpers (extracted to ai/system/performance-insights.ts) ──
   const studentName = studentData?.name?.split(" ")[0] || "Your child";
 
-  const generateNarrative = () => {
-    if (subjects.length === 0) return "Loading performance insights...";
-    const sorted = [...subjects].sort((a, b) => b.progress - a.progress);
-    const top = sorted[0];
-    const bottom = sorted[sorted.length - 1];
-    const avg = overallStats.avg;
-    let text = `${studentName} is performing best in ${top.name} with ${top.progress}% this term — ${top.progress >= 85 ? "an excellent result" : "showing steady progress"}. `;
-    if (sorted.length > 1 && bottom.progress < 75)
-      text += `${bottom.name} needs extra attention at ${bottom.progress}% — targeted revision on weak topics can help close the gap. `;
-    if (avg >= 85)
-      text += `Overall performance is outstanding. Keep up the great work!`;
-    else if (avg >= 75)
-      text += `The overall average of ${avg}% reflects consistent effort. A little more daily revision can push it to the next level.`;
-    else if (avg >= 60)
-      text += `With a ${avg}% overall average, there is room to grow. Structured study of 30–45 minutes per subject daily can make a real difference.`;
-    else
-      text += `The overall average is ${avg}%. Extra practice and teacher support are recommended to build confidence and improve results.`;
-    return text;
-  };
-
-  const getGoalInsight = (current: number, target: number, subName: string) => {
-    const gap = target - current;
-    if (gap <= 0) return { line1: `✓ Target already achieved in ${subName}!`, line2: "Maintain consistency to stay at this level.", color: "text-emerald-700", bg: "bg-emerald-50 border-emerald-200" };
-    if (gap <= 5)  return { line1: `Just ${gap}% more needed in ${subName}`, line2: "20 mins of daily revision for 1–2 weeks can close this gap.", color: "text-sky-700", bg: "bg-sky-50 border-sky-200" };
-    if (gap <= 15) return { line1: `${gap}% gap to close in ${subName}`, line2: "30 mins of focused daily practice for 3–4 weeks is recommended.", color: "text-indigo-700", bg: "bg-indigo-50 border-indigo-200" };
-    if (gap <= 25) return { line1: `${gap}% improvement needed in ${subName}`, line2: "45 mins daily for 1.5–2 months, with weekly mock tests, should get there.", color: "text-amber-700", bg: "bg-amber-50 border-amber-200" };
-    return { line1: `${gap}% is a big gap in ${subName}`, line2: "1 hour of daily study for 2–3 months + teacher guidance strongly recommended.", color: "text-rose-700", bg: "bg-rose-50 border-rose-200" };
-  };
-
-  const getBenchmarkTier = (pct: number) => {
-    if (pct >= 90) return { label: "Top 10%", color: "text-violet-700 bg-violet-100", icon: "🏆" };
-    if (pct >= 80) return { label: "Top 20%", color: "text-indigo-700 bg-indigo-100", icon: "⭐" };
-    if (pct >= 70) return { label: "Top 40%", color: "text-emerald-700 bg-emerald-100", icon: "📈" };
-    if (pct >= 60) return { label: "Top 60%", color: "text-amber-700 bg-amber-100", icon: "📊" };
-    return { label: "Needs Work", color: "text-rose-700 bg-rose-100", icon: "📚" };
-  };
+  const generateNarrative = () =>
+    generatePerformanceNarrative({ studentName, subjects, overallAvg: overallStats.avg });
   // ────────────────────────────────────────────────────────────────────────────
 
   // Subject detail view

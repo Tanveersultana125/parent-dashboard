@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { db } from "../lib/firebase";
 import { scopedQuery } from "../lib/scopedQuery";
+import { subscribePerStudent } from "../lib/perStudentQuery";
 import {
   collection, where, onSnapshot, addDoc, serverTimestamp, getDocs,
   updateDoc, doc
@@ -36,29 +37,31 @@ const TeacherNotesPage = () => {
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  // Fetch all parent_notes for this student (multi-stream)
+  // Fetch all parent_notes for this student.
+  // Dual-query pattern (studentId + studentEmail) — teacher writes don't always
+  // carry the canonical studentId. See lib/perStudentQuery.ts.
   useEffect(() => {
     if (!studentData?.id) return;
     setLoading(true);
-    const sId     = studentData.id;
-    const schoolId = studentData.schoolId;
 
-    // Single scoped query — prevents cross-school data access
-    const q = scopedQuery("parent_notes", schoolId, where("studentId", "==", sId));
-
-    const u1 = onSnapshot(q, snap => {
-      const data = snap.docs
-        .map((d: any) => ({ id: d.id, ...d.data() }))
-        .sort((a: any, b: any) => (a.createdAt?.toMillis?.() || 0) - (b.createdAt?.toMillis?.() || 0));
-      setAllNotes(data);
-      setLoading(false);
-    }, (err) => {
-      console.error("[TeacherNotes] listener error:", err);
-      setAllNotes([]);
-      setLoading(false);
+    const u1 = subscribePerStudent({
+      collection: "parent_notes",
+      student: studentData,
+      onChange: (docs) => {
+        const data = docs
+          .map((d) => ({ id: d.id, ...d.data() }))
+          .sort((a: any, b: any) => (a.createdAt?.toMillis?.() || 0) - (b.createdAt?.toMillis?.() || 0));
+        setAllNotes(data);
+        setLoading(false);
+      },
+      onError: (err) => {
+        console.error("[TeacherNotes] listener error:", err);
+        setAllNotes([]);
+        setLoading(false);
+      },
     });
     return () => u1();
-  }, [studentData?.id, studentData?.schoolId]);
+  }, [studentData?.id, studentData?.schoolId, studentData?.email]);
 
   // Fetch available teachers for "New Message"
   useEffect(() => {

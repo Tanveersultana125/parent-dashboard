@@ -10,6 +10,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { db } from "@/lib/firebase";
 import { scopedQuery } from "@/lib/scopedQuery";
 import { subscribeEnrollments } from "@/lib/enrollmentQuery";
+import { subscribePerStudent } from "@/lib/perStudentQuery";
 import {
   where, onSnapshot,
   doc, updateDoc
@@ -53,81 +54,93 @@ const AlertsPage = () => {
   const [notes, setNotes] = useState<any[]>([]);
   const [assignments, setAssignments] = useState<any[]>([]);
   const [submissions, setSubmissions] = useState<any[]>([]);
-  const [smartAlerts, setSmartAlerts] = useState<any[]>([]);
 
   useEffect(() => {
     if (!studentData?.id) return;
     setLoading(true);
-    const sid = studentData.id;
     const schoolId = studentData.schoolId;
 
     const unsubs: (() => void)[] = [];
     let loaded = 0;
-    const total = 6; // collections: risks, attendance, test_scores, notes, smartAlerts, submissions (enrollments→assignments handled separately)
+    const total = 5; // collections: risks, attendance, test_scores, notes, submissions (enrollments→assignments handled separately)
 
     const done = () => { loaded++; if (loaded >= total) setLoading(false); };
 
-    // Single scoped query helper — one listener per collection, filtered by schoolId when available.
-    // `done()` runs on both success and error so the spinner is never stuck when one
-    // source returns permission-denied (rule rejection does not progress the counter otherwise).
-    const scopedSnap = (collName: string, setter: (docs: any[]) => void) => {
-      const q = scopedQuery(collName, schoolId, where("studentId", "==", sid));
-      const u = onSnapshot(
-        q,
-        snap => {
-          setter(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    // Per-student dual-query helper — listens by BOTH studentId AND studentEmail
+    // and merges, because teacher writes don't always carry the canonical
+    // studentId. See lib/perStudentQuery.ts.
+    const perStudentSnap = (collName: string, setter: (docs: any[]) => void) => {
+      const u = subscribePerStudent({
+        collection: collName,
+        student: studentData,
+        onChange: (docs) => {
+          setter(docs.map(d => ({ id: d.id, ...d.data() })));
           done();
         },
-        (err) => {
+        onError: (err) => {
           console.error(`[Alerts] ${collName} listener error:`, err);
           setter([]);
           done();
         },
-      );
+      });
       unsubs.push(u);
     };
 
     // 1. risks
-    scopedSnap("risks", setRisks);
+    perStudentSnap("risks", setRisks);
 
     // 2. attendance
-    scopedSnap("attendance", setAttendance);
+    perStudentSnap("attendance", setAttendance);
 
-    // 3. test_scores + gradebook_scores merged
-    let tsSnap: any = null, gbSnap: any = null;
+    // 3. test_scores + gradebook_scores merged. Each side runs the dual
+    // (id+email) query internally and we merge the two collections client-side.
+    let tsDocs: any[] = [], gbDocs: any[] = [];
     const processScores = () => {
-      const ts = (tsSnap?.docs || []).map((d: any) => ({ id: d.id, ...d.data() }));
-      const gb = (gbSnap?.docs || []).map((d: any) => ({
-        id: d.id, ...d.data(),
-        testName: d.data().columnName || "Class Assessment",
-        score: d.data().mark, maxScore: d.data().maxMarks || 100
+      const ts = tsDocs;
+      const gb = gbDocs.map((d: any) => ({
+        ...d,
+        testName: d.columnName || "Class Assessment",
+        score: d.mark, maxScore: d.maxMarks || 100,
       }));
-      const all = new Map();
+      const all = new Map<string, any>();
       [...ts, ...gb].forEach(d => { if (!all.has(d.id)) all.set(d.id, d); });
       setScores(Array.from(all.values()));
     };
-    const tsQ = scopedQuery("test_scores", schoolId, where("studentId", "==", sid));
-    const gbQ = scopedQuery("gradebook_scores", schoolId, where("studentId", "==", sid));
+    let tsCounted = false;
     unsubs.push(
-      onSnapshot(tsQ, s => { tsSnap = s; processScores(); done(); }, (err) => {
-        console.error("[Alerts] test_scores listener error:", err);
-        done();
+      subscribePerStudent({
+        collection: "test_scores",
+        student: studentData,
+        onChange: (docs) => {
+          tsDocs = docs.map(d => ({ id: d.id, ...d.data() }));
+          processScores();
+          if (!tsCounted) { tsCounted = true; done(); }
+        },
+        onError: (err) => {
+          console.error("[Alerts] test_scores listener error:", err);
+          if (!tsCounted) { tsCounted = true; done(); }
+        },
       }),
-      onSnapshot(gbQ, s => { gbSnap = s; processScores(); }, (err) => {
-        console.error("[Alerts] gradebook_scores listener error:", err);
-      })
+      subscribePerStudent({
+        collection: "gradebook_scores",
+        student: studentData,
+        onChange: (docs) => {
+          gbDocs = docs.map(d => ({ id: d.id, ...d.data() }));
+          processScores();
+        },
+        onError: (err) => {
+          console.error("[Alerts] gradebook_scores listener error:", err);
+        },
+      }),
     );
 
     // 4. parent_notes
-    scopedSnap("parent_notes", setNotes);
+    perStudentSnap("parent_notes", setNotes);
 
-    // 5. student_smart_alerts
-    scopedSnap("student_smart_alerts", setSmartAlerts);
+    // 5. submissions
+    perStudentSnap("submissions", setSubmissions);
 
-    // 6. submissions
-    scopedSnap("submissions", setSubmissions);
-
-    // 7. enrollments → classIds → assignments
+    // 6. enrollments → classIds → assignments
     // Uses chunked "in" queries to handle >10 classIds (Firestore limit)
     let enrollSnap: any = null;
     const assignUnsubs: (() => void)[] = [];
@@ -354,24 +367,6 @@ const AlertsPage = () => {
       });
     });
 
-    // ── SOURCE 6: student_smart_alerts (AI-generated) ──
-    smartAlerts
-      .filter(a => !a.resolved)
-      .forEach(a => {
-        const cat = a.category === "Behavior" ? "General" : (a.category || "General");
-        result.push({
-          id: `smart_${a.id}`,
-          title: a.title || "Alert",
-          description: a.description || "",
-          category: cat as ParsedAlert["category"],
-          priority: a.priority || "Medium Priority",
-          createdAt: a.createdAt || null,
-          teacherName: a.teacherName || "",
-          source: "student_smart_alerts",
-          sourceId: a.id
-        });
-      });
-
     // Deduplicate by id, filter dismissed
     const seen = new Set<string>();
     return result
@@ -392,11 +387,6 @@ const AlertsPage = () => {
     localStorage.setItem(dismissKey, JSON.stringify([...next]));
 
     // If it came from a Firestore-writable source, persist it
-    if (alert.source === "student_smart_alerts" && alert.sourceId) {
-      try {
-        await updateDoc(doc(db, "student_smart_alerts", alert.sourceId), { resolved: true });
-      } catch { /* ignore */ }
-    }
     if (alert.source === "risks" && alert.sourceId) {
       try {
         await updateDoc(doc(db, "risks", alert.sourceId), { resolved: true });
@@ -418,7 +408,8 @@ const AlertsPage = () => {
     return tab === "All" || a.category === tab;
   });
 
-  // ── Feature 16: AI Action Recommendations ────────────────────────────────
+  // ── Action recommendations ───────────────────────────────────────────────
+  // Deterministic mapping: alert category + priority + source → CTA buttons.
   type Action = { label: string; primary: boolean; color?: string; onClick: () => void };
   const getActions = (alert: ParsedAlert): Action[] => {
     const go = (path: string) => () => navigate(path);

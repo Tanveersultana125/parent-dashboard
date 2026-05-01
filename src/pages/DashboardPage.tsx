@@ -3,12 +3,14 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/AuthContext";
 import { CheckCircle, AlertCircle, Calendar, Star, Clock, Loader2, ShieldCheck, BrainCircuit, Sparkles, TrendingUp, BookOpen, Lightbulb, Download, Trophy, ArrowRight, BarChart3, ClipboardList, Award } from "lucide-react";
 import { ParentAIController } from "../ai/controller/ai-controller";
+import { selectParentingTips } from "../ai/system/parenting-tips";
 import { generateWeeklyReport } from "../ai/engines/weekly-report-engine";
 import WeeklyReportPDF from "../components/WeeklyReportPDF";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { db } from "@/lib/firebase";
 import { collection, query, where, onSnapshot, getDocs, Timestamp } from "firebase/firestore";
 import { subscribeEnrollments } from "@/lib/enrollmentQuery";
+import { fetchPerStudent } from "@/lib/perStudentQuery";
 import { useSchoolSettings, resolveAcademicYear } from "@/hooks/useSchoolSettings";
 import { useIsMobile } from "@/hooks/use-mobile";
 
@@ -20,70 +22,22 @@ function timeAgo(date: Date): string {
   return date.toLocaleDateString();
 }
 
-function generateSmartParentingTips(stats: { attendance: number; avgScore: number; pending: number; tests: number }, childName: string) {
-  const tips: { tip: string; reason: string }[] = [];
-  const name = childName || "your child";
-
-  if (stats.attendance < 75) {
-    tips.push({
-      tip: `Make school attendance a top priority for ${name}`,
-      reason: `Attendance is at ${stats.attendance}% — below 75% risks missing critical lessons and falling behind peers.`
-    });
-  } else if (stats.attendance < 85) {
-    tips.push({
-      tip: `Work on improving ${name}'s attendance consistency`,
-      reason: `At ${stats.attendance}%, a few more absences could affect term performance. Aim for 90%+.`
-    });
-  } else {
-    tips.push({
-      tip: `Keep up ${name}'s great attendance habit`,
-      reason: `${stats.attendance}% attendance is excellent — consistent presence directly improves academic retention.`
-    });
-  }
-
-  if (stats.avgScore > 0 && stats.avgScore < 60) {
-    tips.push({
-      tip: `Schedule dedicated revision time at home with ${name}`,
-      reason: `Average score is ${stats.avgScore}% — focused daily revision of 30–45 mins can significantly improve results.`
-    });
-  } else if (stats.avgScore >= 60 && stats.avgScore < 80) {
-    tips.push({
-      tip: `Encourage ${name} to practice weak subjects with extra exercises`,
-      reason: `Scoring ${stats.avgScore}% on average — targeted practice on lower-scoring subjects will push overall grades higher.`
-    });
-  } else if (stats.avgScore >= 80) {
-    tips.push({
-      tip: `Challenge ${name} with advanced problems to stay ahead`,
-      reason: `Strong ${stats.avgScore}% average — keeping the mind challenged prevents complacency and builds exam confidence.`
-    });
-  }
-
-  if (stats.pending > 3) {
-    tips.push({
-      tip: `Help ${name} create a daily homework schedule`,
-      reason: `There are ${stats.pending} pending assignments — prioritizing them daily prevents last-minute pressure and missed deadlines.`
-    });
-  } else if (stats.pending > 0) {
-    tips.push({
-      tip: `Remind ${name} to complete ${stats.pending} pending assignment${stats.pending > 1 ? "s" : ""} this week`,
-      reason: `Staying on top of assignments builds discipline and prevents grade penalties.`
-    });
-  }
-
-  if (stats.tests > 0) {
-    tips.push({
-      tip: `Start test preparation now — ${stats.tests} test${stats.tests > 1 ? "s" : ""} coming up this week`,
-      reason: `Reviewing notes 2–3 days before tests instead of last-minute cramming improves retention by up to 50%.`
-    });
-  }
-
-  // Always include a health tip
-  tips.push({
-    tip: `Ensure ${name} gets 8–9 hours of sleep on school nights`,
-    reason: `Sleep directly impacts memory consolidation — well-rested students perform better in class and retain lessons longer.`
-  });
-
-  return tips.slice(0, 3); // Max 3 tips
+// Parenting tips are now sourced from a curated 50-tip library (signal-tagged).
+// See src/ai/system/parenting-tips.ts. Kept this thin adapter so the existing
+// callsite stays a single line.
+function generateSmartParentingTips(
+  stats: { attendance: number | null; avgScore: number; pending: number | null; tests: number | null },
+  childName: string,
+  grade?: string | number | null,
+) {
+  return selectParentingTips({
+    attendance: stats.attendance,
+    avgScore: stats.avgScore,
+    pending: stats.pending,
+    tests: stats.tests,
+    childName,
+    grade: grade ?? null,
+  }, 3);
 }
 
 function getInitials(name: string): string {
@@ -353,8 +307,8 @@ const DashboardPage = () => {
 
   useEffect(() => {
     if (dataLoading) return;
-    setSmartTips(generateSmartParentingTips(liveStats, studentData?.name?.split(" ")[0] || ""));
-  }, [dataLoading, liveStats.attendance, liveStats.avgScore, liveStats.pending, liveStats.tests]);
+    setSmartTips(generateSmartParentingTips(liveStats, studentData?.name?.split(" ")[0] || "", studentData?.grade));
+  }, [dataLoading, liveStats.attendance, liveStats.avgScore, liveStats.pending, liveStats.tests, studentData?.grade, studentData?.name]);
 
   // Week config: Fri/Sat/Sun = generate window; Mon = prev week report + block
   const getWeekConfig = () => {
@@ -397,18 +351,15 @@ const DashboardPage = () => {
       const weekEndStr = now.toISOString().split("T")[0];
       const { thisWeekKey: weekCacheKey } = getWeekConfig();
 
-      const schoolId = studentData.schoolId;
-      // Scoped query helper for report fetches
-      const rq = (collName: string, extraFilters: any[] = []) => {
-        const base = schoolId
-          ? query(collection(db, collName), where("schoolId", "==", schoolId), where("studentId", "==", studentData.id), ...extraFilters)
-          : query(collection(db, collName), where("studentId", "==", studentData.id), ...extraFilters);
-        return getDocs(base);
-      };
+      // Dual-query (studentId + studentEmail) helper — see lib/perStudentQuery.ts
+      // for why this matters. Without it, the weekly report misses every record
+      // teachers wrote against the student-email-only enrollment.
+      const fetchWeek = (collName: string, extraFilters: any[] = []) =>
+        fetchPerStudent({ collection: collName, student: studentData, filters: extraFilters });
 
       // Fetch only this week's attendance — date range filter avoids fetching years of history
-      const attSnap = await rq("attendance", [where("date", ">=", weekStartStr)]);
-      const attDocs = attSnap.docs.map(d => d.data());
+      const attDocsRaw = await fetchWeek("attendance", [where("date", ">=", weekStartStr)]);
+      const attDocs = attDocsRaw.map(d => d.data());
       const attPresent = attDocs.filter((d: any) => d.status === "present").length;
       const attLate = attDocs.filter((d: any) => d.status === "late").length;
       const attAbsent = attDocs.filter((d: any) => d.status === "absent").length;
@@ -418,8 +369,8 @@ const DashboardPage = () => {
       const attPct = attTotal === 0 ? 0 : Math.round(((attPresent + attLate) / attTotal) * 100);
 
       // Fetch this week's results (scoped, no full history scan)
-      const resSnap = await rq("results");
-      const resDocs = resSnap.docs.map(d => d.data());
+      const resDocsRaw = await fetchWeek("results");
+      const resDocs = resDocsRaw.map(d => d.data());
       const weekTests = resDocs
         .filter((d: any) => { const dt = d.date || d.createdAt?.toDate?.()?.toISOString?.()?.split?.("T")?.[0] || ""; return dt >= weekStartStr; })
         .map((d: any) => {
@@ -430,8 +381,8 @@ const DashboardPage = () => {
         });
 
       // Fetch this week's submissions to get accurate counts (no hardcoded "+2").
-      const subSnap = await rq("submissions", [where("submittedAt", ">=", Timestamp.fromDate(weekStart))]);
-      const submittedThisWeek = subSnap.docs.length;
+      const subDocsRaw = await fetchWeek("submissions", [where("submittedAt", ">=", Timestamp.fromDate(weekStart))]);
+      const submittedThisWeek = subDocsRaw.length;
       const pendingNow = liveStats.pending ?? 0;
 
       const reportData = {
@@ -1115,7 +1066,7 @@ const DashboardPage = () => {
 
           {/* Tips list */}
           {(() => {
-            const tips = aiInsights?.parenting_tips?.length > 0 ? aiInsights.parenting_tips : smartTips;
+            const tips = smartTips;
             return tips.length > 0 ? tips.map((item: { tip: string; reason: string }, i: number) => (
               <div key={i} className="px-[18px] py-[15px] flex items-start gap-[14px]"
                 style={{ borderBottom: i < tips.length - 1 ? `0.5px solid ${SEP}` : "none" }}>
@@ -1747,7 +1698,7 @@ const DashboardPage = () => {
             </div>
 
             {(() => {
-              const tips = aiInsights?.parenting_tips?.length > 0 ? aiInsights.parenting_tips : smartTips;
+              const tips = smartTips;
               return tips.length > 0 ? (
                 <div className="grid grid-cols-1 lg:grid-cols-3">
                   {tips.map((item: { tip: string; reason: string }, i: number, arr: any[]) => (

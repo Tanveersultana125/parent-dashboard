@@ -6,9 +6,9 @@ import {
 } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { useAuth } from "@/lib/AuthContext";
-import { scopedQuery } from "@/lib/scopedQuery";
-import { where, onSnapshot, limit } from "firebase/firestore";
+import { limit } from "firebase/firestore";
 import { subscribeEnrollments } from "@/lib/enrollmentQuery";
+import { subscribePerStudent } from "@/lib/perStudentQuery";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 export default function BehaviourPage() {
@@ -21,7 +21,6 @@ export default function BehaviourPage() {
   useEffect(() => {
     if (!studentData?.id) return;
     setLoading(true);
-    const schoolId = studentData.schoolId;
 
     // 1. Enrollments — dual-listener helper picks up legacy enrollments
     // where studentId was stored as email by older writes.
@@ -30,22 +29,30 @@ export default function BehaviourPage() {
       if (ratings.length > 0) setManualRating(Math.max(...ratings));
     });
 
-    // 2. Behavioural notes — single scoped query
-    const notesQ = scopedQuery("parent_notes", schoolId, where("studentId", "==", studentData.id), limit(40));
-    const unsubNotes = onSnapshot(notesQ, (snap) => {
-      const notes = snap.docs
-        .map(d => ({ id: d.id, ...d.data() as any }))
-        .sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
-      setTeacherNotes(notes);
-      setLoading(false);
-    }, (err) => {
-      console.error("[Behaviour] notes listener error:", err);
-      setTeacherNotes([]);
-      setLoading(false);
+    // 2. Behavioural notes — dual-query (studentId + studentEmail).
+    // NOTE: limit(40) is applied to BOTH listeners independently, so worst
+    // case we hold up to 80 docs in memory before merging — still small.
+    const unsubNotes = subscribePerStudent({
+      collection: "parent_notes",
+      student: studentData,
+      filters: [limit(40)],
+      onChange: (docs) => {
+        const notes = docs
+          .map(d => ({ id: d.id, ...d.data() as any }))
+          .sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0))
+          .slice(0, 40);
+        setTeacherNotes(notes);
+        setLoading(false);
+      },
+      onError: (err) => {
+        console.error("[Behaviour] notes listener error:", err);
+        setTeacherNotes([]);
+        setLoading(false);
+      },
     });
 
     return () => { unsubEnroll(); unsubNotes(); };
-  }, [studentData?.id, studentData?.schoolId]);
+  }, [studentData?.id, studentData?.schoolId, studentData?.email]);
 
   // Determine positive vs improvement notes heuristics
   const classifyNote = (note: any) => {

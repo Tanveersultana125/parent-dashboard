@@ -1,11 +1,12 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { CheckCircle, XCircle, Clock, ChevronLeft, ChevronRight, Loader2, Calendar as CalendarIcon, Users, TrendingUp, UserCheck, CalendarX, Hourglass } from "lucide-react";
+import { CheckCircle, XCircle, Clock, ChevronLeft, ChevronRight, Loader2, Calendar as CalendarIcon, Users, TrendingUp, UserCheck, CalendarX, Hourglass, Sparkles, Flame, AlertTriangle } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
 import { useSchoolSettings } from "@/hooks/useSchoolSettings";
-import { scopedQuery } from "@/lib/scopedQuery";
-import { where, onSnapshot } from "firebase/firestore";
+import { where } from "firebase/firestore";
+import { subscribePerStudent } from "@/lib/perStudentQuery";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { computeAttendanceCorrelation } from "@/ai/system/attendance-correlation";
 
 type DayStatus = "present" | "absent" | "late" | "weekend" | "forgotten" | "empty";
 
@@ -26,49 +27,56 @@ const AttendancePage = () => {
   useEffect(() => {
     if (!studentData?.id) return;
     setLoading(true);
-    const schoolId = studentData.schoolId;
 
-    const processLogs = (snap: any) => {
-      if (!mountedRef.current) return;
-      const uniqueLogs = Array.from(new Map(snap.docs.map((d: any) => [d.id, { id: d.id, ...d.data() as any }])).values())
-        // Null-safe: an attendance doc missing `date` used to crash the sort
-        // with `TypeError: cannot read 'localeCompare' of undefined`. Defaulting
-        // to "" pushes those to the end and keeps the page alive.
-        .sort((a: any, b: any) => (b.date || "").localeCompare(a.date || ""));
-      setAttendanceLogs(uniqueLogs);
-
-      const pCount = uniqueLogs.filter((l: any) => l.status === "present").length;
-      const aCount = uniqueLogs.filter((l: any) => l.status === "absent").length;
-      const lCount = uniqueLogs.filter((l: any) => l.status === "late").length;
-      const total = pCount + aCount + lCount;
-      // Don't fake 100% when there are zero records — that misled parents into
-      // thinking the student had perfect attendance even before any class day
-      // had been marked. 0 conveys "no data" without implying a positive value.
-      setStats({ present: pCount, absent: aCount, late: lCount, percentage: total === 0 ? 0 : Math.round(((pCount + lCount) / total) * 100) });
-
-      const now = new Date();
-      const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-      const thisMonth = uniqueLogs.filter((l: any) => l.date?.startsWith(ym));
-      setMonthStats({
-        present: thisMonth.filter((l: any) => l.status === "present").length,
-        absent: thisMonth.filter((l: any) => l.status === "absent").length,
-        late: thisMonth.filter((l: any) => l.status === "late").length,
-      });
-      setLoading(false);
-    };
-
-    // Limit to current academic year — avoids fetching 4+ years of history (500+ docs → ~200 docs)
-    // Academic year: June of this year if after June, else June of last year
+    // Limit to current academic year — avoids fetching 4+ years of history.
+    // Academic year: June of this year if after June, else June of last year.
     const now = new Date();
     const yearStart = now.getMonth() >= 5
       ? `${now.getFullYear()}-06-01`
       : `${now.getFullYear() - 1}-06-01`;
 
-    // Single query scoped to this school + current academic year — prevents cross-school reads
-    const q = scopedQuery("attendance", schoolId, where("studentId", "==", studentData.id), where("date", ">=", yearStart));
-    const u1 = onSnapshot(q, s => processLogs(s));
-    return () => { u1(); };
-  }, [studentData?.id, studentData?.schoolId]);
+    // Dual-query (studentId + studentEmail) via shared helper. Catches
+    // attendance docs whose studentId field doesn't match the parent's auth
+    // doc id (a real bug confirmed live 2026-05-01 — see memory file
+    // dual_query_pattern_studentid_email.md).
+    const u = subscribePerStudent({
+      collection: "attendance",
+      student: studentData,
+      filters: [where("date", ">=", yearStart)],
+      onChange: (docs) => {
+        if (!mountedRef.current) return;
+        const uniqueLogs = docs
+          .map((d) => ({ id: d.id, ...d.data() as any }))
+          // Null-safe: an attendance doc missing `date` used to crash the sort
+          // with `TypeError: cannot read 'localeCompare' of undefined`.
+          .sort((a: any, b: any) => (b.date || "").localeCompare(a.date || ""));
+        setAttendanceLogs(uniqueLogs);
+
+        const pCount = uniqueLogs.filter((l: any) => l.status === "present").length;
+        const aCount = uniqueLogs.filter((l: any) => l.status === "absent").length;
+        const lCount = uniqueLogs.filter((l: any) => l.status === "late").length;
+        const total = pCount + aCount + lCount;
+        // Don't fake 100% when there are zero records — that misled parents into
+        // thinking the student had perfect attendance even before any class day
+        // had been marked. 0 conveys "no data" without implying a positive value.
+        setStats({ present: pCount, absent: aCount, late: lCount, percentage: total === 0 ? 0 : Math.round(((pCount + lCount) / total) * 100) });
+
+        const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+        const thisMonth = uniqueLogs.filter((l: any) => l.date?.startsWith(ym));
+        setMonthStats({
+          present: thisMonth.filter((l: any) => l.status === "present").length,
+          absent: thisMonth.filter((l: any) => l.status === "absent").length,
+          late: thisMonth.filter((l: any) => l.status === "late").length,
+        });
+        setLoading(false);
+      },
+      onError: (err) => {
+        console.warn("[Attendance] listener error:", err);
+        setLoading(false);
+      },
+    });
+    return () => u();
+  }, [studentData?.id, studentData?.schoolId, studentData?.email]);
 
   const daysInMonth = (d: Date) => new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
   const firstDayOfMonth = (d: Date) => new Date(d.getFullYear(), d.getMonth(), 1).getDay();
@@ -102,6 +110,14 @@ const AttendancePage = () => {
 
   const monthName = selectedDate.toLocaleString("default", { month: "long", year: "numeric" });
   const recentAbsences = attendanceLogs.filter(a => a.status !== "present").slice(0, 5);
+
+  // ── Attendance Correlation (system-driven, no AI call) ─────────────────────
+  // Recomputes only when the underlying logs or student name change. Pure
+  // function — no network, no side effects. See ai/system/attendance-correlation.ts.
+  const correlation = useMemo(() => computeAttendanceCorrelation({
+    childName: studentData?.name?.split(" ")[0] || "",
+    logs: attendanceLogs,
+  }), [attendanceLogs, studentData?.name]);
 
   /* ═══════════════════════════════════════════════════════════════
      MOBILE — Bright Blue Apple UI
@@ -566,6 +582,103 @@ const AttendancePage = () => {
           </div>
         </div>
 
+        {/* ── Attendance Correlation Insight (system-driven) ── */}
+        {!loading && (() => {
+          const bandTone = correlation.band === "excellent" ? { c: GREEN, bg: GREEN_S, bdr: GREEN_B }
+            : correlation.band === "good" ? { c: B1, bg: "rgba(0,85,255,0.07)", bdr: "rgba(0,85,255,0.18)" }
+            : correlation.band === "needs_improvement" ? { c: ORANGE, bg: "rgba(255,136,0,0.08)", bdr: "rgba(255,136,0,0.22)" }
+            : { c: RED, bg: "rgba(255,51,85,0.07)", bdr: "rgba(255,51,85,0.20)" };
+          return (
+            <div className="mx-5 mt-3 bg-white rounded-[22px] overflow-hidden"
+              style={{ boxShadow: SH_LG, border: "0.5px solid rgba(0,85,255,0.10)" }}>
+              <div className="flex items-center gap-3 px-5 py-4 relative overflow-hidden"
+                style={{ background: "linear-gradient(140deg, #001888 0%, #0033CC 48%, #0055FF 100%)" }}>
+                <div className="absolute -top-7 -right-4 w-[120px] h-[120px] rounded-full pointer-events-none"
+                  style={{ background: "radial-gradient(circle, rgba(255,255,255,0.10) 0%, transparent 65%)" }} />
+                <div className="w-[30px] h-[30px] rounded-[9px] flex items-center justify-center relative z-10"
+                  style={{ background: "rgba(255,255,255,0.18)", border: "0.5px solid rgba(255,255,255,0.26)" }}>
+                  <Sparkles className="w-4 h-4 text-white" strokeWidth={2.2} />
+                </div>
+                <div className="relative z-10">
+                  <div className="text-[15px] font-bold text-white" style={{ letterSpacing: "-0.3px" }}>Attendance Correlation</div>
+                  <div className="text-[11px] mt-0.5" style={{ color: "rgba(255,255,255,0.55)" }}>How presence is shaping {studentFirstName}'s learning</div>
+                </div>
+              </div>
+
+              {/* Band pill + narrative */}
+              <div className="px-5 py-4">
+                <div className="inline-flex items-center gap-[6px] px-[11px] py-1 rounded-full text-[10px] font-bold uppercase tracking-[0.04em] mb-[10px]"
+                  style={{ background: bandTone.bg, color: bandTone.c, border: `0.5px solid ${bandTone.bdr}` }}>
+                  <span className="w-[6px] h-[6px] rounded-full" style={{ background: bandTone.c }} />
+                  {correlation.band_label}
+                </div>
+                <p className="text-[13px] leading-[1.6]" style={{ color: T2 }}>
+                  {correlation.correlation_narrative}
+                </p>
+              </div>
+
+              {/* Streak + day pattern */}
+              {(correlation.streak.longest_streak > 0 || correlation.day_pattern.weekday) && (
+                <div className="px-5 pb-4 flex flex-col gap-[10px]">
+                  {correlation.streak.longest_streak > 0 && (
+                    <div className="flex items-center gap-[10px] px-[14px] py-[10px] rounded-[14px]"
+                      style={{ background: BG, border: "0.5px solid rgba(0,85,255,0.10)" }}>
+                      <div className="w-[30px] h-[30px] rounded-[9px] flex items-center justify-center shrink-0"
+                        style={{ background: "rgba(255,136,0,0.12)", border: "0.5px solid rgba(255,136,0,0.24)" }}>
+                        <Flame className="w-[15px] h-[15px]" style={{ color: ORANGE }} strokeWidth={2.2} />
+                      </div>
+                      <div className="flex-1">
+                        <div className="text-[12px] font-bold" style={{ color: T1 }}>
+                          Current streak: {correlation.streak.current_streak} {correlation.streak.current_streak === 1 ? "day" : "days"}
+                          <span className="font-normal" style={{ color: T3 }}> · best: {correlation.streak.longest_streak}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {correlation.day_pattern.weekday && (
+                    <div className="flex items-center gap-[10px] px-[14px] py-[10px] rounded-[14px]"
+                      style={{ background: "rgba(255,51,85,0.05)", border: "0.5px solid rgba(255,51,85,0.16)" }}>
+                      <div className="w-[30px] h-[30px] rounded-[9px] flex items-center justify-center shrink-0"
+                        style={{ background: "rgba(255,51,85,0.10)", border: "0.5px solid rgba(255,51,85,0.22)" }}>
+                        <AlertTriangle className="w-[14px] h-[14px]" style={{ color: RED }} strokeWidth={2.2} />
+                      </div>
+                      <div className="flex-1">
+                        <div className="text-[12px] font-bold" style={{ color: T1 }}>
+                          Pattern: most absences on {correlation.day_pattern.weekday}s
+                          <span className="font-normal" style={{ color: T3 }}> ({correlation.day_pattern.absence_count})</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Impact analysis */}
+              <div className="px-5 pb-4">
+                <div className="text-[10px] font-bold uppercase tracking-[0.10em] mb-[8px]" style={{ color: T4 }}>Impact analysis</div>
+                <div className="flex flex-col gap-2">
+                  {correlation.impact_analysis.map((pt, i) => (
+                    <div key={i} className="flex items-start gap-[10px]">
+                      <div className="w-[18px] h-[18px] rounded-[6px] flex items-center justify-center text-[10px] font-bold shrink-0 mt-[1px]"
+                        style={{ background: "rgba(0,85,255,0.08)", color: B1, border: "0.5px solid rgba(0,85,255,0.16)" }}>
+                        {i + 1}
+                      </div>
+                      <p className="text-[12px] leading-[1.55]" style={{ color: T2 }}>{pt}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Growth strategy */}
+              <div className="mx-5 mb-4 rounded-[16px] px-4 py-[14px]"
+                style={{ background: bandTone.bg, border: `0.5px solid ${bandTone.bdr}` }}>
+                <div className="text-[10px] font-bold uppercase tracking-[0.10em] mb-[5px]" style={{ color: bandTone.c }}>Next step</div>
+                <p className="text-[12px] leading-[1.55]" style={{ color: T2 }}>{correlation.growth_strategy}</p>
+              </div>
+            </div>
+          );
+        })()}
+
         {/* ── Exam Eligibility Threshold Bar ── */}
         <div
           role="button"
@@ -913,6 +1026,99 @@ const AttendancePage = () => {
             )}
           </div>
         </div>
+
+        {/* ── Attendance Correlation Insight (system-driven) ── */}
+        {!loading && (() => {
+          const bandTone = correlation.band === "excellent" ? { c: GREEN, bg: GREEN_S, bdr: GREEN_B }
+            : correlation.band === "good" ? { c: B1, bg: "rgba(0,85,255,0.07)", bdr: "rgba(0,85,255,0.18)" }
+            : correlation.band === "needs_improvement" ? { c: ORANGE, bg: "rgba(255,136,0,0.08)", bdr: "rgba(255,136,0,0.22)" }
+            : { c: RED, bg: "rgba(255,51,85,0.07)", bdr: "rgba(255,51,85,0.20)" };
+          return (
+            <div className="bg-white rounded-[24px] overflow-hidden mt-5"
+              style={{ boxShadow: SH_LG, border: "0.5px solid rgba(0,85,255,0.10)" }}>
+              {/* Header */}
+              <div className="flex items-center gap-3 px-6 py-5 relative overflow-hidden"
+                style={{ background: "linear-gradient(140deg, #001888 0%, #0033CC 48%, #0055FF 100%)" }}>
+                <div className="absolute -top-7 -right-4 w-[160px] h-[160px] rounded-full pointer-events-none"
+                  style={{ background: "radial-gradient(circle, rgba(255,255,255,0.10) 0%, transparent 65%)" }} />
+                <div className="w-[34px] h-[34px] rounded-[10px] flex items-center justify-center relative z-10"
+                  style={{ background: "rgba(255,255,255,0.18)", border: "0.5px solid rgba(255,255,255,0.26)" }}>
+                  <Sparkles className="w-[18px] h-[18px] text-white" strokeWidth={2.2} />
+                </div>
+                <div className="relative z-10">
+                  <div className="text-[17px] font-bold text-white" style={{ letterSpacing: "-0.3px" }}>Attendance Correlation</div>
+                  <div className="text-[12px] mt-0.5" style={{ color: "rgba(255,255,255,0.55)" }}>How presence is shaping {studentFirstName}'s learning</div>
+                </div>
+              </div>
+
+              <div className="p-6 grid grid-cols-1 lg:grid-cols-3 gap-5">
+                {/* Left: narrative + band */}
+                <div className="lg:col-span-2">
+                  <div className="inline-flex items-center gap-[6px] px-3 py-[5px] rounded-full text-[11px] font-bold uppercase tracking-[0.04em] mb-3"
+                    style={{ background: bandTone.bg, color: bandTone.c, border: `0.5px solid ${bandTone.bdr}` }}>
+                    <span className="w-[7px] h-[7px] rounded-full" style={{ background: bandTone.c }} />
+                    {correlation.band_label}
+                  </div>
+                  <p className="text-[14px] leading-[1.65] mb-5" style={{ color: T2 }}>
+                    {correlation.correlation_narrative}
+                  </p>
+
+                  <div className="text-[10px] font-bold uppercase tracking-[0.10em] mb-3" style={{ color: T4 }}>Impact analysis</div>
+                  <div className="flex flex-col gap-[10px]">
+                    {correlation.impact_analysis.map((pt, i) => (
+                      <div key={i} className="flex items-start gap-3">
+                        <div className="w-[22px] h-[22px] rounded-[7px] flex items-center justify-center text-[11px] font-bold shrink-0 mt-[2px]"
+                          style={{ background: "rgba(0,85,255,0.08)", color: B1, border: "0.5px solid rgba(0,85,255,0.16)" }}>
+                          {i + 1}
+                        </div>
+                        <p className="text-[13px] leading-[1.55]" style={{ color: T2 }}>{pt}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Right: streak + day pattern + growth strategy */}
+                <div className="flex flex-col gap-3">
+                  {correlation.streak.longest_streak > 0 && (
+                    <div className="flex items-center gap-3 px-4 py-[14px] rounded-[16px]"
+                      style={{ background: BG, border: "0.5px solid rgba(0,85,255,0.10)" }}>
+                      <div className="w-[36px] h-[36px] rounded-[11px] flex items-center justify-center shrink-0"
+                        style={{ background: "rgba(255,136,0,0.12)", border: "0.5px solid rgba(255,136,0,0.24)" }}>
+                        <Flame className="w-[18px] h-[18px]" style={{ color: ORANGE }} strokeWidth={2.2} />
+                      </div>
+                      <div>
+                        <div className="text-[12px] font-bold" style={{ color: T1 }}>
+                          Streak: {correlation.streak.current_streak} {correlation.streak.current_streak === 1 ? "day" : "days"}
+                        </div>
+                        <div className="text-[11px]" style={{ color: T3 }}>Best so far: {correlation.streak.longest_streak} days</div>
+                      </div>
+                    </div>
+                  )}
+                  {correlation.day_pattern.weekday && (
+                    <div className="flex items-center gap-3 px-4 py-[14px] rounded-[16px]"
+                      style={{ background: "rgba(255,51,85,0.05)", border: "0.5px solid rgba(255,51,85,0.16)" }}>
+                      <div className="w-[36px] h-[36px] rounded-[11px] flex items-center justify-center shrink-0"
+                        style={{ background: "rgba(255,51,85,0.10)", border: "0.5px solid rgba(255,51,85,0.22)" }}>
+                        <AlertTriangle className="w-[16px] h-[16px]" style={{ color: RED }} strokeWidth={2.2} />
+                      </div>
+                      <div>
+                        <div className="text-[12px] font-bold" style={{ color: T1 }}>
+                          Pattern: {correlation.day_pattern.weekday}s
+                        </div>
+                        <div className="text-[11px]" style={{ color: T3 }}>{correlation.day_pattern.absence_count} absences fall on this day</div>
+                      </div>
+                    </div>
+                  )}
+                  <div className="rounded-[16px] px-4 py-[14px]"
+                    style={{ background: bandTone.bg, border: `0.5px solid ${bandTone.bdr}` }}>
+                    <div className="text-[10px] font-bold uppercase tracking-[0.10em] mb-[6px]" style={{ color: bandTone.c }}>Next step</div>
+                    <p className="text-[13px] leading-[1.55]" style={{ color: T2 }}>{correlation.growth_strategy}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* ── Bottom row: Recent Absences + Policy + Eligibility ── */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mt-5">
