@@ -408,18 +408,8 @@ const AttendancePage = () => {
                 })();
 
                 return (
-                  <div key={day} className="aspect-square rounded-[12px] flex items-center justify-center text-[13px] relative" style={cellStyle}>
+                  <div key={day} className="aspect-square rounded-[12px] flex items-center justify-center text-[13px]" style={cellStyle}>
                     {day}
-                    {(status === "present" || status === "absent" || status === "late") && (
-                      <span
-                        className="absolute bottom-[3px] left-1/2 -translate-x-1/2 w-[6px] h-[6px] rounded-full"
-                        style={{
-                          background: status === "present" ? GREEN : status === "absent" ? RED : ORANGE,
-                          // Tiny white ring on today so the status dot stays visible against the blue gradient.
-                          boxShadow: isToday ? "0 0 0 1.5px rgba(255,255,255,0.85)" : undefined,
-                        }}
-                      />
-                    )}
                   </div>
                 );
               })}
@@ -926,18 +916,8 @@ const AttendancePage = () => {
                   })();
 
                   return (
-                    <div key={day} className="aspect-square rounded-[14px] flex items-center justify-center text-[15px] relative" style={cellStyle}>
+                    <div key={day} className="aspect-square rounded-[14px] flex items-center justify-center text-[15px]" style={cellStyle}>
                       {day}
-                      {(status === "present" || status === "absent" || status === "late") && (
-                        <span
-                          className="absolute bottom-[4px] left-1/2 -translate-x-1/2 w-[7px] h-[7px] rounded-full"
-                          style={{
-                            background: status === "present" ? GREEN : status === "absent" ? RED : ORANGE,
-                            // Tiny white ring on today so the status dot stays visible against the blue gradient.
-                            boxShadow: isToday ? "0 0 0 1.5px rgba(255,255,255,0.85)" : undefined,
-                          }}
-                        />
-                      )}
                     </div>
                   );
                 })}
