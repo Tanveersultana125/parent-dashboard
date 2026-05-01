@@ -329,6 +329,15 @@ export const parentAIProxy = functions
           "AI service is temporarily unavailable — please retry in a moment.",
         );
       }
+      if (openaiCode === "model_not_found" || status === 404) {
+        // The fallback chain was exhausted — every model returned not_found.
+        // This usually means the OpenAI key is restricted to a tier that
+        // doesn't include any of the fallback models. Operator action needed.
+        throw new functions.https.HttpsError(
+          "failed-precondition",
+          "No AI model in the fallback chain is available to this OpenAI key. Please contact support.",
+        );
+      }
       throw new functions.https.HttpsError(
         "internal",
         `AI call failed${openaiCode ? ` (${openaiCode})` : ""}. Please retry.`,

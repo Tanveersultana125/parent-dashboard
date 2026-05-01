@@ -23,8 +23,20 @@ const STAFF_ROLES = new Set(["owner", "principal", "teacher", "data_entry"]);
 const ADMIN_ROLES = new Set(["owner", "principal"]);
 const ALLOWED_OPENAI_MODELS = new Set([
     "gpt-4o-mini",
+    "gpt-4o",
     "gpt-4.1-mini",
+    "gpt-4-turbo",
+    "gpt-3.5-turbo",
 ]);
+// Fallback chain — if the requested model returns "model_not_found"
+// (account/key doesn't have access to the newest one), step down through
+// progressively older + universally-available models. The order is by
+// quality preference; we stop at the first model the OpenAI key can serve.
+const MODEL_FALLBACK_CHAIN = [
+    "gpt-4o-mini",
+    "gpt-4.1-mini",
+    "gpt-3.5-turbo",
+];
 const MAX_PROMPT_CHARS = 8000;
 const MAX_IMAGE_B64_BYTES = 8 * 1024 * 1024; // ~6 MB raw image
 const MAX_PDF_BYTES = 20 * 1024 * 1024;
@@ -195,14 +207,46 @@ exports.parentAIProxy = functions
         else {
             messages.push({ role: "user", content: prompt });
         }
-        const completion = await openai.chat.completions.create({
-            model: resolvedModel,
-            messages,
-            max_tokens: 1500,
-            ...(jsonMode && !hasImage ? { response_format: { type: "json_object" } } : {}),
-        });
-        const content = completion.choices[0]?.message?.content ?? "";
-        return { content };
+        // Build the model attempt sequence. Start with the resolved choice,
+        // then walk the fallback chain. We dedupe to avoid retrying the same
+        // model. Vision requests stay locked to gpt-4o-mini (fallback chain
+        // doesn't apply because non-vision models can't process the image).
+        const modelsToTry = hasImage
+            ? [resolvedModel]
+            : Array.from(new Set([resolvedModel, ...MODEL_FALLBACK_CHAIN]));
+        let lastErr = null;
+        for (const candidate of modelsToTry) {
+            try {
+                const completion = await openai.chat.completions.create({
+                    model: candidate,
+                    messages,
+                    max_tokens: 1500,
+                    ...(jsonMode && !hasImage ? { response_format: { type: "json_object" } } : {}),
+                });
+                const content = completion.choices[0]?.message?.content ?? "";
+                if (candidate !== modelsToTry[0]) {
+                    // Surface a single info log when fallback succeeded so we can
+                    // see in production logs which model is actually serving.
+                    console.info(`parentAIProxy: succeeded with fallback model "${candidate}"`);
+                }
+                return { content };
+            }
+            catch (innerErr) {
+                const innerCode = innerErr?.error?.code ?? innerErr?.code;
+                const innerStatus = innerErr?.status ?? innerErr?.response?.status;
+                // ONLY retry the next model on model_not_found / 404. Every other
+                // error (rate limit, auth, invalid request) is real and should
+                // surface immediately — retrying would just delay the truth.
+                const shouldFallback = innerCode === "model_not_found" || innerStatus === 404;
+                if (!shouldFallback) {
+                    throw innerErr;
+                }
+                console.warn(`parentAIProxy: model "${candidate}" not available — trying next in chain`);
+                lastErr = innerErr;
+            }
+        }
+        // Exhausted the chain — surface the last error to the outer catch.
+        throw lastErr ?? new Error("All AI models in fallback chain returned not_found");
     }
     catch (error) {
         // Surface a SPECIFIC error code so the client can show a useful message
@@ -230,6 +274,12 @@ exports.parentAIProxy = functions
         }
         if (status && status >= 500) {
             throw new functions.https.HttpsError("unavailable", "AI service is temporarily unavailable — please retry in a moment.");
+        }
+        if (openaiCode === "model_not_found" || status === 404) {
+            // The fallback chain was exhausted — every model returned not_found.
+            // This usually means the OpenAI key is restricted to a tier that
+            // doesn't include any of the fallback models. Operator action needed.
+            throw new functions.https.HttpsError("failed-precondition", "No AI model in the fallback chain is available to this OpenAI key. Please contact support.");
         }
         throw new functions.https.HttpsError("internal", `AI call failed${openaiCode ? ` (${openaiCode})` : ""}. Please retry.`);
     }

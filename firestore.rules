@@ -666,8 +666,13 @@ service cloud.firestore {
     }
 
     // ── AI insight cache per student (24h TTL, refreshable) ─────────────
+    // get: allow when doc doesn't exist yet (cache miss returns null cleanly,
+    //   without a "permission denied" error on the client) OR when the existing
+    //   doc is in the caller's school. This was the source of noisy
+    //   "[aiInsights] cache read failed" warnings in production — `inSameSchool()`
+    //   evaluated false on missing docs since `resource.data` was undefined.
     match /student_ai_insights/{studentId} {
-      allow get:  if signedIn() && inSameSchool();
+      allow get:  if signedIn() && (resource == null || inSameSchool());
       allow list: if signedIn();  // TEMPORARY PHASE-1: relaxed while client queries migrate. Re-tighten to inSameSchool() once all pages filter by schoolId.
       allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
       allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
