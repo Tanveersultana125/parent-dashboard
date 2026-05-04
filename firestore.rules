@@ -760,12 +760,18 @@ service cloud.firestore {
     }
 
     // ── Syllabus / class documents ─────────────────────────────────────
+    //   Authored by either the principal (class-tagged for the whole class) or
+    //   by the assigned teacher. Mutations are restricted to the original
+    //   author or any admin (principal/owner) — teachers cannot delete docs
+    //   uploaded by the principal.
     match /syllabi/{id} {
       allow get:  if signedIn() && inSameSchool();
       allow list: if signedIn();  // TEMPORARY PHASE-1: relaxed while client queries migrate. Re-tighten to inSameSchool() once all pages filter by schoolId.
-      allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
-      allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
-      allow delete:    if signedIn() && inSameSchool() && hasStaffRole();
+      allow create: if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
+      allow update: if signedIn() && inSameSchool() && schoolIdImmutable()
+                       && (resource.data.uploadedBy == uid() || hasAdminRole());
+      allow delete: if signedIn() && inSameSchool()
+                       && (resource.data.uploadedBy == uid() || hasAdminRole());
     }
 
     // ── Owner → Principal notifications ────────────────────────────────

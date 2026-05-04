@@ -95,16 +95,39 @@ service firebase.storage {
           && request.resource.contentType.matches('image/(jpeg|png|webp|gif)');
     }
 
+    // Syllabus uploads: PDF + Office (Word/PowerPoint) + JPG/PNG, 50 MB cap.
+    // Client-side validators enforce stricter limits (teacher PDF-only 50 MB,
+    // principal 30 MB across all types) — this is the outer envelope.
+    function isAllowedSyllabusType() {
+      return request.resource != null
+          && request.resource.size < 50 * 1024 * 1024
+          && request.resource.contentType in [
+               'application/pdf',
+               'application/msword',
+               'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+               'application/vnd.ms-powerpoint',
+               'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+               'image/jpeg',
+               'image/png'
+             ];
+    }
+
 
     // ═════════════════════════════════════════════════════════════════════
-    // ── Syllabus / class documents (teacher upload) ──────────────────────
-    //   Read: any signed-in user in same school.
-    //   Write: staff role in same school, PDF only, 50 MB cap.
-    //   Delete: staff role in same school.
+    // ── Syllabus / class documents ──────────────────────────────────────
+    //   Authored by either teacher (their own classes) or principal (any
+    //   class in their branch). Both write under the same 5-segment layout:
+    //     syllabi/{schoolId}/{branchId}/{classId}/{authorBucket}/{fileName}
+    //   where authorBucket is the teacher's titleSlug or the literal
+    //   "principal".
+    //   Read: signed-in same-school.
+    //   Write: staff role in same school, allowed file type, 50 MB cap.
+    //   Delete: staff role in same school (Firestore rule further restricts
+    //           who can delete by author / admin).
     // ═════════════════════════════════════════════════════════════════════
     match /syllabi/{schoolId}/{branchId}/{classId}/{titleSlug}/{fileName} {
       allow read:   if sameSchool(schoolId);
-      allow write:  if sameSchool(schoolId) && hasStaffRole() && isPdf();
+      allow write:  if sameSchool(schoolId) && hasStaffRole() && isAllowedSyllabusType();
       allow delete: if sameSchool(schoolId) && hasStaffRole();
     }
 
