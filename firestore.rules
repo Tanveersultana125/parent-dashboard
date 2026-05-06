@@ -749,8 +749,14 @@ service cloud.firestore {
     //   Doc ID format: {schoolId}_{type}_{id}_W{weekNumber}
     //   Body stamps schoolId at top level so inSameSchool() can scope reads.
     //   Only principals/owners can write — these power the network leaderboard.
+    //
+    //   get: same pattern as student_ai_insights above — allow when doc
+    //   doesn't exist yet (cache miss returns null cleanly without a noisy
+    //   "permission denied" on the client) OR when the existing doc is in
+    //   the caller's school. `inSameSchool()` evaluates false on missing
+    //   docs because `resource.data` is undefined.
     match /leaderboard_ai_insights/{key} {
-      allow get:    if signedIn() && inSameSchool();
+      allow get:    if signedIn() && (resource == null || inSameSchool());
       allow list:   if signedIn() && inSameSchool();
       allow create: if signedIn() && hasSchoolId() && writingToOwnSchool()
                        && claimRole() in ['owner', 'principal'];
