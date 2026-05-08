@@ -516,6 +516,17 @@ service cloud.firestore {
       allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
       allow delete:    if signedIn() && inSameSchool() && hasStaffRole();
     }
+    // ── Summarize Lesson (SummarizeLesson.tsx) ──────────────────────────
+    // Added 2026-05-14: teacher uploads a PDF → AI generates a 7-section
+    // summary. Save persists the result so the teacher can revisit. Mirrors
+    // lessonPlans rule shape — staff-only writes scoped by schoolId.
+    match /lessonSummaries/{id} {
+      allow get:  if signedIn() && inSameSchool();
+      allow list: if signedIn();  // TEMPORARY PHASE-1
+      allow create:    if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
+      allow update:    if signedIn() && inSameSchool() && schoolIdImmutable() && hasStaffRole();
+      allow delete:    if signedIn() && inSameSchool() && hasStaffRole();
+    }
     match /classes/{id} {
       allow get:  if signedIn() && inSameSchool();
       allow list: if signedIn();  // TEMPORARY PHASE-1: relaxed while client queries migrate. Re-tighten to inSameSchool() once all pages filter by schoolId.
