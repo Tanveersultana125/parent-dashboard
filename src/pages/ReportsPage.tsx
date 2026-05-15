@@ -1,10 +1,12 @@
 import { useState, useEffect } from "react";
 import {
   FileText, Download, Loader2, Search,
-  FileCheck, Clock, ArrowRightCircle, Sparkles, GraduationCap, ShieldCheck, CheckCircle2
+  FileCheck, Clock, ArrowRightCircle, Sparkles, GraduationCap, ShieldCheck, CheckCircle2,
+  ScrollText,
 } from "lucide-react";
 import { useAuth } from "../lib/AuthContext";
 import { scopedQuery } from "../lib/scopedQuery";
+import { subscribePerStudent } from "../lib/perStudentQuery";
 import { where, onSnapshot } from "firebase/firestore";
 import { toast } from "sonner";
 import * as XLSX from 'xlsx';
@@ -15,6 +17,7 @@ const ReportsPage = () => {
   const { studentData } = useAuth();
   const isMobile = useIsMobile();
   const [reports, setReports] = useState<any[]>([]);
+  const [papers, setPapers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [formatFilter, setFormatFilter] = useState<"all" | "pdf" | "excel" | "verified">("all");
@@ -56,7 +59,34 @@ const ReportsPage = () => {
     return () => unsub();
   }, [studentData?.id, studentData?.schoolId, (studentData as any)?.branchId]);
 
-  const filteredReports = reports.filter(r => 
+  // Papers section — corrected exam papers the teacher sent to the parent via
+  // PaperCorrection's "Send to parent" button. Reads paper_corrections via
+  // dual-key (studentId + studentEmail) — see lib/perStudentQuery — and
+  // filters client-side to only published papers.
+  useEffect(() => {
+    if (!studentData?.id) return;
+    const unsub = subscribePerStudent({
+      collection: "paper_corrections",
+      student: studentData,
+      onChange: (docs) => {
+        const list = docs
+          .map(d => ({ id: d.id, ...(d.data() as any) }))
+          .filter(p => p.publishedToParent === true)
+          .sort((a: any, b: any) => {
+            const ta = a.publishedToParentAt?.toMillis?.() || a.createdAt?.toMillis?.() || 0;
+            const tb = b.publishedToParentAt?.toMillis?.() || b.createdAt?.toMillis?.() || 0;
+            return tb - ta;
+          });
+        setPapers(list);
+      },
+      onError: (err) => {
+        console.error("[ReportsPage] paper_corrections listener failed:", err);
+      },
+    });
+    return () => unsub();
+  }, [studentData?.id, studentData?.schoolId, studentData?.email]);
+
+  const filteredReports = reports.filter(r =>
     r.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     r.teacherName?.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -460,6 +490,12 @@ const ReportsPage = () => {
           </div>
         )}
 
+        {/* Papers — teacher-sent corrected exam papers. Module-scoped
+            component so it doesn't remount on every render. */}
+        <div className="mx-5">
+          <PapersStrip papers={papers} palette={{ B1, T1, T3, T4, SH }} />
+        </div>
+
         <div className="h-6" />
       </div>
     );
@@ -841,8 +877,92 @@ const ReportsPage = () => {
                 ))}
               </div>
             </div>
+            {/* Papers — corrected exam papers the teacher sent via
+                PaperCorrection > "Send to parent". Sits below the AI Quick
+                Insights card in the right column. */}
+            <PapersStrip papers={papers} palette={{ B1, T1, T3, T4, SH: SH_D }} />
           </div>
         </div>
+      </div>
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────
+// PapersStrip — surfaces AI-corrected papers the teacher sent via the
+// teacher-dashboard's PaperCorrection > "Send to parent" button. Module-scoped
+// (not inline in ReportsPage) so it doesn't remount on every render of the
+// parent — memory: bug_pattern_inline_component_remount_flicker.
+// ─────────────────────────────────────────────────────────────────────────
+const PapersStrip = ({ papers, palette }: {
+  papers: any[];
+  palette: { B1: string; T1: string; T3: string; T4: string; SH: string };
+}) => {
+  if (papers.length === 0) return null;
+  const fmt = (ts: any) => {
+    try {
+      const d = ts?.toDate?.() || (ts ? new Date(ts) : null);
+      if (!d || isNaN(d.getTime())) return "Recent";
+      return d.toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+    } catch { return "Recent"; }
+  };
+  const bandColor = (band: string) => {
+    const b = (band || "C").toString().toUpperCase();
+    if (b === "A" || b === "A+") return { bg: "rgba(0,200,83,0.10)", color: "#007830" };
+    if (b === "B" || b === "B+") return { bg: "rgba(0,85,255,0.10)", color: palette.B1 };
+    if (b === "C" || b === "C+") return { bg: "rgba(255,170,0,0.12)", color: "#884400" };
+    return { bg: "rgba(255,51,85,0.10)", color: "#C92A2A" };
+  };
+  return (
+    <div className="bg-white rounded-[22px] p-5"
+      style={{ boxShadow: palette.SH, border: "0.5px solid rgba(0,85,255,0.10)", marginTop: 16 }}>
+      <div className="flex items-center gap-3 mb-3">
+        <div className="w-10 h-10 rounded-[12px] flex items-center justify-center"
+          style={{ background: "linear-gradient(135deg, #0055FF, #1166FF)", boxShadow: "0 3px 10px rgba(0,85,255,0.30)" }}>
+          <ScrollText className="w-5 h-5 text-white" strokeWidth={2.3} />
+        </div>
+        <div className="flex-1">
+          <div className="text-[15px] font-bold" style={{ color: palette.T1, letterSpacing: "-0.2px" }}>Papers</div>
+          <div className="text-[11px] font-medium" style={{ color: palette.T3 }}>
+            {papers.length} corrected paper{papers.length === 1 ? "" : "s"} from your teacher
+          </div>
+        </div>
+      </div>
+      <div className="flex flex-col gap-2">
+        {papers.map(p => {
+          const score = typeof p.marksScored === "number" ? p.marksScored : 0;
+          const total = typeof p.totalMarks === "number" ? p.totalMarks : 0;
+          const pct = typeof p.percentage === "number" ? p.percentage : (total > 0 ? (score / total) * 100 : 0);
+          const band = bandColor(p.gradeBand);
+          const subject = (p.subject || "").trim() || "Paper";
+          return (
+            <div key={p.id} className="rounded-[14px] p-3 flex items-start gap-3"
+              style={{ background: "#F4F7FE", border: "0.5px solid rgba(0,85,255,0.07)" }}>
+              <div className="w-9 h-9 rounded-[10px] flex items-center justify-center flex-shrink-0"
+                style={{ background: "rgba(0,85,255,0.10)", color: palette.B1, fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+                {subject.slice(0, 3)}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-[2px]">
+                  <div className="text-[13px] font-bold truncate flex-1 min-w-0" style={{ color: palette.T1, letterSpacing: "-0.2px" }}>
+                    {subject}{p.categoryLabel ? ` · ${p.categoryLabel}` : ""}
+                  </div>
+                  <span className="text-[10px] font-bold px-[8px] py-[2px] rounded-full flex-shrink-0"
+                    style={{ background: band.bg, color: band.color, letterSpacing: "0.04em" }}>
+                    {p.gradeBand || "—"}
+                  </span>
+                </div>
+                <div className="text-[12px] font-semibold" style={{ color: palette.T3 }}>
+                  {score} / {total} marks · {pct.toFixed(1)}%
+                </div>
+                <div className="text-[10px] font-medium mt-[2px]" style={{ color: palette.T4 }}>
+                  Sent {fmt(p.publishedToParentAt || p.createdAt)}
+                  {p.teacherName ? ` · by ${p.teacherName}` : ""}
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
