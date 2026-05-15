@@ -8,6 +8,7 @@
     "forceConsistentCasingInFileNames": true,
     "noImplicitAny": false,
     "outDir": "lib",
+    "rootDir": "src",
     "sourceMap": true,
     "strict": false,
     "target": "es2020",
@@ -16,6 +17,10 @@
     "types": ["node"]
   },
   "include": [
-    "src"
+    "src/**/*"
+  ],
+  "exclude": [
+    "lib",
+    "node_modules"
   ]
 }
