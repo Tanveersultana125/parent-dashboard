@@ -4,7 +4,7 @@ import {
   Home, User, TrendingUp, CalendarCheck, ClipboardList,
   FileText, Brain, SmilePlus, StickyNote,
   Bell, Settings, GraduationCap, LogOut, CalendarDays, School, X,
-  Sparkles, Library, Award
+  Sparkles, Library, Award, LifeBuoy
 } from "lucide-react";
 
 interface ParentSidebarProps {
@@ -31,6 +31,7 @@ const navItems: { title: string; path: string; icon: any; badge?: string | numbe
   { title: "Reports", path: "/reports", icon: FileText },
   { title: "Alumni", path: "/alumni", icon: Award },
   { title: "Alerts", path: "/alerts", icon: Bell },
+  { title: "Help & Support", path: "/help", icon: LifeBuoy },
   { title: "Settings", path: "/settings", icon: Settings },
 ];
 

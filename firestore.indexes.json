@@ -107,7 +107,11 @@
     { "collectionGroup": "tests_registry",              "queryScope": "COLLECTION", "fields": [{ "fieldPath": "schoolId", "order": "ASCENDING" }, { "fieldPath": "classId",   "order": "ASCENDING" }] },
     { "collectionGroup": "tests_registry",              "queryScope": "COLLECTION", "fields": [{ "fieldPath": "schoolId", "order": "ASCENDING" }, { "fieldPath": "branchId",  "order": "ASCENDING" }, { "fieldPath": "classId", "order": "ASCENDING" }] },
     { "collectionGroup": "tests_registry",              "queryScope": "COLLECTION", "fields": [{ "fieldPath": "schoolId", "order": "ASCENDING" }, { "fieldPath": "teacherId", "order": "ASCENDING" }] },
-    { "collectionGroup": "test_scores",                 "queryScope": "COLLECTION", "fields": [{ "fieldPath": "schoolId", "order": "ASCENDING" }, { "fieldPath": "classId",   "order": "ASCENDING" }] }
+    { "collectionGroup": "test_scores",                 "queryScope": "COLLECTION", "fields": [{ "fieldPath": "schoolId", "order": "ASCENDING" }, { "fieldPath": "classId",   "order": "ASCENDING" }] },
+
+    { "collectionGroup": "support_tickets",             "queryScope": "COLLECTION", "fields": [{ "fieldPath": "createdBy.uid", "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }] },
+    { "collectionGroup": "support_tickets",             "queryScope": "COLLECTION", "fields": [{ "fieldPath": "status",        "order": "ASCENDING" }, { "fieldPath": "lastReplyAt", "order": "DESCENDING" }] },
+    { "collectionGroup": "support_tickets",             "queryScope": "COLLECTION", "fields": [{ "fieldPath": "schoolId",      "order": "ASCENDING" }, { "fieldPath": "createdAt", "order": "DESCENDING" }] }
   ],
   "fieldOverrides": []
 }

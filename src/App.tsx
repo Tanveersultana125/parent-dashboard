@@ -35,6 +35,7 @@ const ExamStructurePage   = lazy(() => import("./pages/ExamStructurePage"));
 const AlumniPage          = lazy(() => import("./pages/AlumniPage"));
 const Leaderboard         = lazy(() => import("./pages/leaderboard/Leaderboard"));
 const Insights            = lazy(() => import("./pages/leaderboard/Insights"));
+const Help                = lazy(() => import("./pages/Help"));
 const NotFound            = lazy(() => import("./pages/NotFound"));
 const Login               = lazy(() => import("./pages/Login"));
 
@@ -110,6 +111,7 @@ const AppRoutes = () => {
           <Route path="/ai-practice"   element={<AIPracticePage />} />
           <Route path="/leaderboard"            element={<Leaderboard />} />
           <Route path="/leaderboard/insights"   element={<Insights />} />
+          <Route path="/help"          element={<Help />} />
           <Route path="/settings"      element={<SettingsPage />} />
         </Route>
         <Route path="*" element={<NotFound />} />

@@ -168,6 +168,20 @@ service cloud.firestore {
           || (hasPlatformAdminDoc() && platformAdminRole() == 'superadmin');
     }
 
+    // ── Support agent — cross-tenant read+update on /support_tickets ─────
+    // Email allowlist for the support-edullent-dashboard portal. The list is
+    // tiny by design — Edullent's own support team. To add an agent, append
+    // to the array AND grant access in the frontend env var VITE_SUPPORT_EMAILS.
+    function isSupportAgent() {
+      return isPermanentSuperadmin()
+          || (signedIn()
+              && request.auth.token.email_verified == true
+              && email() in [
+                'edullentofficial@gmail.com'
+                // Add more support agent emails here as the team grows.
+              ]);
+    }
+
 
     // ═══════════════════════════════════════════════════════════════════════
     // ── 1. OWNER SUBTREE — /schools/{ownerUid}/** ────────────────────────
@@ -1158,6 +1172,85 @@ service cloud.firestore {
       allow delete: if signedIn() && inSameSchool()
         && (hasAdminRole()
             || resource.data.studentId == uid());
+    }
+
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // ── 11.7. SUPPORT TICKETS — cross-dashboard help desk ───────────────
+    // ═══════════════════════════════════════════════════════════════════════
+    // Written by any signed-in user (parent / teacher / principal / owner)
+    // from their dashboard's /help page. Read + replied by Edullent support
+    // agents from the support-edullent-dashboard portal.
+    //
+    // Tenant scoping: ticket has schoolId for traceability, but support
+    // agents read cross-tenant (intentional — they help every school).
+    //
+    // Reply array is appended-only by either side. User can append their
+    // reply + reopen a resolved ticket. Support can change status / append.
+    match /support_tickets/{ticketId} {
+
+      // Read: ticket creator (own uid match) OR support agent.
+      allow get: if signedIn() && (
+        resource.data.createdBy.uid == uid()
+        || isSupportAgent()
+      );
+
+      // List: support agent cross-tenant; users must query with
+      // `where("createdBy.uid","==",uid)` filter on their own dashboard.
+      // We can't enforce the where-clause server-side, so any signed-in
+      // user can list, but get/document reads still gate per-doc.
+      allow list: if signedIn();
+
+      // Create: any signed-in user. Stamp identity + initial status.
+      allow create: if signedIn()
+        && request.resource.data.createdBy.uid == uid()
+        && request.resource.data.schoolId is string
+        && request.resource.data.schoolId.size() > 0
+        && request.resource.data.schoolId.size() < 128
+        && request.resource.data.createdBy.role in
+             ['parent','teacher','principal','owner']
+        && request.resource.data.status == 'open'
+        && request.resource.data.subject is string
+        && request.resource.data.subject.size() > 0
+        && request.resource.data.subject.size() <= 200
+        && request.resource.data.description is string
+        && request.resource.data.description.size() > 0
+        && request.resource.data.description.size() <= 5000
+        && request.resource.data.category in
+             ['bug','feature','billing','account','other']
+        && request.resource.data.priority in
+             ['low','medium','high','urgent']
+        && request.resource.data.replyCount == 0;
+
+      // Update:
+      //   - Ticket creator: append reply + flip status from resolved→open
+      //     (re-open). Cannot change schoolId / createdBy / subject / etc.
+      //   - Support agent: append reply + change status + resolvedAt.
+      //     Cannot change schoolId or createdBy.uid (forensics).
+      allow update: if signedIn() && (
+        // Support agent path
+        (isSupportAgent()
+          && request.resource.data.schoolId == resource.data.schoolId
+          && request.resource.data.createdBy.uid == resource.data.createdBy.uid)
+        ||
+        // Creator path — only append-style mutations
+        (resource.data.createdBy.uid == uid()
+          && request.resource.data.schoolId == resource.data.schoolId
+          && request.resource.data.createdBy.uid == resource.data.createdBy.uid
+          && request.resource.data.subject == resource.data.subject
+          && request.resource.data.category == resource.data.category
+          // Status: keep same OR reopen from resolved/closed
+          && (
+            request.resource.data.status == resource.data.status
+            || (resource.data.status in ['resolved','closed']
+                && request.resource.data.status == 'open')
+          )
+          // Reply count can only grow
+          && request.resource.data.replyCount >= resource.data.replyCount)
+      );
+
+      // Delete: support agent only — preserves user history by default.
+      allow delete: if isSupportAgent();
     }
 
 
