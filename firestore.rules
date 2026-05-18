@@ -187,8 +187,11 @@ service cloud.firestore {
         // Owner reads everything under their tree.
         // Principals/teachers of same school can read (e.g. branches list)
         // but only owner can write.
+        // Platform admins (super-admin portal) can read cross-tenant — needed
+        // for the network-wide branches/teachers/students rollups.
         allow read: if isOwnerOf(schoolId)
-                    || (signedIn() && claimSchoolId() == schoolId);
+                    || (signedIn() && claimSchoolId() == schoolId)
+                    || isPlatformAdmin();
         allow write: if isOwnerOf(schoolId);
       }
     }
@@ -229,8 +232,9 @@ service cloud.firestore {
                     hasOwnerRole()
                     || inSameSchool()
                     || ownsEmail()   // teacher can read own record pre-claims-sync
+                    || isPlatformAdmin()  // super-admin portal cross-tenant read
                   );
-      allow list: if signedIn() && inSameSchool();
+      allow list: if signedIn() && (inSameSchool() || isPlatformAdmin());
 
       // Create: only admins (owner/principal) of the target school.
       allow create: if signedIn() && hasSchoolId() && writingToOwnSchool() && hasAdminRole();
@@ -264,8 +268,9 @@ service cloud.firestore {
                     || ('parentEmail' in resource.data
                         && resource.data.parentEmail is string
                         && resource.data.parentEmail.lower() == email())
+                    || isPlatformAdmin()  // super-admin portal cross-tenant read
                   );
-      allow list: if signedIn() && inSameSchool();
+      allow list: if signedIn() && (inSameSchool() || isPlatformAdmin());
 
       allow create: if signedIn() && hasSchoolId() && writingToOwnSchool() && hasStaffRole();
 
