@@ -3,6 +3,27 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Mokoto — Edullent brand wordmark ──────────────────────────────────────
+   Used ONLY on the literal "Edullent" wordmark (login splash). Body / UI
+   text stays SF Pro / Plus Jakarta Sans. */
+@font-face {
+  font-family: 'Mokoto';
+  src: url('/fonts/mokoto.regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Escape hatch — any element tagged .font-wordmark (and its descendants)
+   uses Mokoto, overriding the global SF Pro chain. */
+.font-wordmark,
+.font-wordmark *,
+.font-wordmark *::before,
+.font-wordmark *::after {
+  font-family: 'Mokoto', 'Plus Jakarta Sans', -apple-system, sans-serif !important;
+  font-weight: 400 !important;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════
    NATIVE APP FEEL — Global overrides
    ═══════════════════════════════════════════════════════════════════════ */

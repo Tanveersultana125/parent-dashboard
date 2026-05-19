@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Printer, MessageSquare, AlertCircle, Loader2, ChevronLeft, ChevronRight, CheckCircle2, FileText, BookOpen, Calendar as CalIcon, TrendingUp, BarChart3, Activity, AlertTriangle, Clock } from "lucide-react";
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, RadarChart, PolarGrid, PolarAngleAxis, Radar } from "recharts";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from "recharts";
 import { doc, onSnapshot, where } from "firebase/firestore";
 import { db } from "../lib/firebase";
 import { useAuth } from "../lib/AuthContext";
@@ -9,6 +9,7 @@ import { useIsMobile } from "../hooks/use-mobile";
 import { subscribePerStudent } from "../lib/perStudentQuery";
 import { subscribeEnrollments } from "../lib/enrollmentQuery";
 import { scopedQuery } from "../lib/scopedQuery";
+import { SubjectMasteryRadar } from "../components/SubjectMasteryRadar";
 
 // ── Tokens ───────────────────────────────────────────────────────────────────
 const T = {
@@ -595,14 +596,8 @@ const MyChildPage = () => {
             ) : (
               <>
                 {radarData.length >= 3 && (
-                  <div style={{ height: 180, marginBottom: 12 }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <RadarChart cx="50%" cy="50%" outerRadius="70%" data={radarData}>
-                        <PolarGrid stroke={T.s2} />
-                        <PolarAngleAxis dataKey="subject" tick={{ fill: T.ink3, fontSize: 10 }} />
-                        <Radar dataKey="score" stroke={T.blue} fill={T.blue} fillOpacity={0.15} strokeWidth={2} />
-                      </RadarChart>
-                    </ResponsiveContainer>
+                  <div style={{ marginBottom: 12 }}>
+                    <SubjectMasteryRadar data={radarData} color={T.blue} height={200} />
                   </div>
                 )}
                 {subEntries.slice(0, 8).map(([sub, sc]) => (

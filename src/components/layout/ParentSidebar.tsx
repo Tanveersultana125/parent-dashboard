@@ -114,8 +114,7 @@ export const ParentSidebar = ({ open, onClose }: ParentSidebarProps) => {
         </div>
         <button
           onClick={logout}
-          className="w-full h-12 flex items-center gap-3 px-4 rounded-xl text-sm font-bold transition-all group hover:bg-rose-500 hover:text-white"
-          style={{ color: "#E11D48" }}
+          className="w-full h-12 flex items-center gap-3 px-4 rounded-xl text-sm font-bold transition-all group text-rose-600 hover:bg-rose-500 hover:text-white"
         >
           <LogOut className="w-5 h-5 group-hover:scale-110 transition-transform" />
           <span>Sign Out</span>

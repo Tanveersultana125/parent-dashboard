@@ -1,6 +1,6 @@
 import React from 'react';
 import { useAuth } from '../lib/AuthContext';
-import { GraduationCap, Loader2, AlertCircle } from 'lucide-react';
+import { Loader2, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
 const Login = () => {
@@ -32,10 +32,21 @@ const Login = () => {
     >
       <div className="max-w-md w-full">
         <div className="text-center mb-8">
-          <div className="w-20 h-20 bg-[#1e294b] rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-xl shadow-slate-900/20 -rotate-3 hover:rotate-0 transition-transform duration-500">
-            <GraduationCap className="w-10 h-10 text-white" />
+          <div className="w-20 h-20 bg-[#1e294b] rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-xl shadow-slate-900/20 -rotate-3 hover:rotate-0 transition-transform duration-500 overflow-hidden">
+            <img
+              src="/edullent-icon.png"
+              alt="Edullent logo"
+              width={44}
+              height={44}
+              style={{ width: 44, height: 44, objectFit: 'contain' }}
+            />
           </div>
-          <h1 className="text-4xl font-black text-[#1e294b] tracking-tight mb-2">Edullent</h1>
+          <h1
+            className="font-wordmark text-4xl text-[#1e294b] mb-2"
+            style={{ letterSpacing: '0.12em' }}
+          >
+            Edullent
+          </h1>
           <p className="text-[#64748b] font-bold uppercase tracking-[0.2em] text-xs">Parent Portal</p>
         </div>
 
