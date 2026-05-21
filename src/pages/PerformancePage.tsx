@@ -1361,20 +1361,18 @@ const BenchmarkInsightsCard = ({
                   </div>
                 </div>
                 {recent.length >= 2 ? (() => {
-                  // Harmonious blue palette — each bar picks a shade from the
-                  // product's blue family based on its score, so the sparkline
-                  // varies visually (4 related blues) instead of looking like
-                  // a wall of identical bars. All shades are deep + saturated;
-                  // none of them is "amber" or "red" — staying on-brand.
-                  //   ≥ 90 → Royal Navy   (richest, deepest)
-                  //   ≥ 75 → Deep Brand   (dark navy → brand blue)
-                  //   ≥ 60 → Brand Blue   (brand blue mid-tone)
-                  //   <  60 → Sky Blue    (brand → lighter, but still blue)
+                  // Performance-based color palette — each bar picks a gradient
+                  // corresponding to the student's academic tier to make trends
+                  // and concerns immediately visible to the parent:
+                  //   ≥ 90 → Strong (Green)
+                  //   ≥ 75 → Good (Blue)
+                  //   ≥ 50 → Developing (Orange)
+                  //   <  50 → Weak (Red)
                   const miniGrad = (v: number) =>
-                    v >= 90 ? "linear-gradient(180deg, #000B33 0%, #001A66 50%, #0033AA 100%)" :
-                    v >= 75 ? "linear-gradient(180deg, #001A66 0%, #003BB3 50%, #0055FF 100%)" :
-                    v >= 60 ? "linear-gradient(180deg, #002080 0%, #0055FF 50%, #1166FF 100%)" :
-                              "linear-gradient(180deg, #0044CC 0%, #1166FF 50%, #4499FF 100%)";
+                    v >= 90 ? "linear-gradient(180deg, #006020 0%, #00C853 100%)" :
+                    v >= 75 ? "linear-gradient(180deg, #003BB3 0%, #0055FF 100%)" :
+                    v >= 50 ? "linear-gradient(180deg, #AA5500 0%, #FF8800 100%)" :
+                              "linear-gradient(180deg, #AA2233 0%, #FF3355 100%)";
                   // Pixels per percent — keeps bars proportional to actual %, not
                   // to whichever value happens to be the max in this row.
                   const ppp = isMobile ? 0.32 : 0.40;
@@ -1425,15 +1423,19 @@ const BenchmarkInsightsCard = ({
                     </div>
                   );
                 })() : recent.length === 1 ? (() => {
-                  // Single-score state — same blue-family palette as the
-                  // multi-bar variant, so a 1-score subject visually rhymes
-                  // with the rest of the surface.
+                  // Single-score state — same performance-based color palette as
+                  // the multi-bar variant, with matching dynamic shadows.
                   const v = recent[0];
                   const chipGrad =
-                    v >= 90 ? "linear-gradient(135deg, #000B33 0%, #0033AA 100%)" :
-                    v >= 75 ? "linear-gradient(135deg, #001A66 0%, #0055FF 100%)" :
-                    v >= 60 ? "linear-gradient(135deg, #002080 0%, #1166FF 100%)" :
-                              "linear-gradient(135deg, #0044CC 0%, #4499FF 100%)";
+                    v >= 90 ? "linear-gradient(135deg, #006020 0%, #00C853 100%)" :
+                    v >= 75 ? "linear-gradient(135deg, #003BB3 0%, #0055FF 100%)" :
+                    v >= 50 ? "linear-gradient(135deg, #AA5500 0%, #FF8800 100%)" :
+                              "linear-gradient(135deg, #AA2233 0%, #FF3355 100%)";
+                  const chipShadow =
+                    v >= 90 ? "rgba(0,200,83,0.35)" :
+                    v >= 75 ? "rgba(0,85,255,0.30)" :
+                    v >= 50 ? "rgba(255,136,0,0.35)" :
+                              "rgba(255,51,85,0.35)";
                   return (
                     <div className="flex flex-col items-end gap-[6px]">
                       <div
@@ -1441,7 +1443,7 @@ const BenchmarkInsightsCard = ({
                         style={{
                           background: chipGrad,
                           boxShadow:
-                            "0 3px 10px rgba(0,85,255,0.30), inset 0 1px 0 rgba(255,255,255,0.18)",
+                            `0 3px 10px ${chipShadow}, inset 0 1px 0 rgba(255,255,255,0.18)`,
                           letterSpacing: "-0.1px",
                         }}
                       >
